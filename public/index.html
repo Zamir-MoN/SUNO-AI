@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SUNO AI v0.6.7</title>
+  <link rel="icon" type="image/png" href="SUNO.png">
+  <link rel="apple-touch-icon" href="SUNO.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- GSAP Core & Plugins -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <!-- Markdown & Code Highlight -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="aura-theme">
+  <!-- THEME MATCHED ANIMATED LOADING SCREEN -->
+  <div id="sunoLoadingScreen" class="suno-loading-overlay">
+    <div class="suno-loading-center">
+      <div class="suno-loading-brand-card">
+        <!-- Central Stage with Logo + Typewriter Text Lockup -->
+        <div class="suno-loading-lockup">
+          <div class="suno-loading-logo-box">
+            <img src="SUNO.png" alt="SUNO AI Logo" class="suno-loading-logo-img">
+          </div>
+
+          <!-- Typing Word Animation Text Container -->
+          <div class="suno-loading-text-stage">
+            <span class="suno-loading-typed-title" id="sunoLoadingTypedTitle"></span>
+            <span class="suno-loading-cursor" id="sunoLoadingCursor"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Background Cosmic Silk Ambient Canvas -->
+  <canvas id="cosmicSilkCanvas" class="cosmic-silk-canvas"></canvas>
+  <div class="cosmic-vignette"></div>
+
+  <!-- Mobile Sidebar Backdrop Overlay -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <div class="aura-app-layout">
+    <!-- COLLAPSIBLE MINIMALIST SIDEBAR -->
+    <aside class="aura-sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <div class="aura-brand-header">
+          <div class="aura-brand-logo-frame">
+            <img src="SUNO.png" alt="SUNO AI Logo" class="aura-brand-img">
+          </div>
+          <div class="aura-brand-text">
+            <span class="brand-title">SUNO AI</span>
+            <span class="brand-badge">v0.6.7</span>
+          </div>
+          <button id="closeSidebarBtn" class="aura-icon-btn mobile-sidebar-close-btn" title="Close Sidebar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <button id="newChatFullBtn" class="aura-new-chat-pill">
+          <svg class="icon-pulse" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          <span>New Session</span>
+        </button>
+      </div>
+
+      <!-- CHAT HISTORY -->
+      <div class="sidebar-chats-wrapper">
+        <span class="chats-section-heading">Recent Memories</span>
+        <div class="chat-history-list" id="historyList">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <!-- SIDEBAR FOOTER -->
+      <div class="sidebar-bottom">
+        <div class="user-profile-row">
+          <div class="user-avatar-iridescent">
+            <img src="SUNO.png" alt="User" class="avatar-logo-mini">
+          </div>
+          <div class="user-info">
+            <span class="user-name">Sudipta Roy</span>
+            <span class="user-handle">Founder & Creator</span>
+          </div>
+          <button id="openSettingsBtn" class="aura-icon-btn settings-gear-btn" title="Settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CHAT PANEL -->
+    <main class="aura-main-panel">
+      <!-- AURA 1.3 FLOATING TOP BAR (Screen 6 Reference) -->
+      <header class="aura-top-header">
+        <button class="aura-nav-icon-btn menu-toggle-btn" id="sidebarToggleBtn" title="Toggle Sidebar (Ctrl+B)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line class="menu-line menu-line-top" x1="4" y1="6" x2="20" y2="6"></line>
+            <line class="menu-line menu-line-mid" x1="4" y1="12" x2="16" y2="12"></line>
+            <line class="menu-line menu-line-bot" x1="4" y1="18" x2="12" y2="18"></line>
+          </svg>
+        </button>
+
+        <!-- Center Model Selector Pill -->
+        <div class="aura-model-selector-pill" id="modelSelectorPill">
+          <img src="SUNO.png" alt="SUNO" class="pill-logo-icon">
+          <span class="pill-model-title">SUNO AI</span>
+          <span class="pill-badge">ONLINE</span>
+          <svg class="pill-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+
+        <div class="aura-header-actions">
+          <!-- Voice Mode Waveform Button -->
+          <button class="aura-voice-mode-trigger" id="openLiveVoiceBtn" title="Enter Live Voice Screen">
+            <div class="waveform-mini-bars">
+              <span></span><span></span><span></span><span></span>
+            </div>
+            <span class="voice-btn-text">Voice</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- CHAT MESSAGE FEED -->
+      <div class="aura-messages-container" id="messagesContainer">
+        <!-- WELCOME HERO (Clean Minimalist Hero: "What's on your mind today?") -->
+        <div class="aura-welcome-hero" id="welcomeHero">
+          <div class="aura-hero-emblem">
+            <div class="aura-sphere-halo"></div>
+            <div class="aura-hero-logo-wrapper">
+              <img src="SUNO.png" alt="SUNO AI" class="aura-hero-logo-img">
+            </div>
+          </div>
+          <h1 class="aura-hero-heading">What's on your mind today?</h1>
+          <p class="aura-hero-sub">Speak naturally, brainstorm ideas, or explore creative narratives.</p>
+        </div>
+      </div>
+
+      <!-- FLOATING AURA INPUT DOCK (Screen 6 & Video Morphing Capsule) -->
+      <div class="aura-input-wrapper">
+        <div class="aura-input-capsule" id="inputCapsule">
+          <button class="aura-capsule-btn attach-btn" id="attachBtn" title="Upload Document or Image">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <input type="file" id="fileAttachmentInput" style="display: none;" accept=".txt,.md,.json,.js,.py,.html,.css,.csv,.pdf,.png,.jpg,.jpeg">
+
+          <textarea 
+            id="messageInput" 
+            placeholder="Enter Message..." 
+            rows="1"
+          ></textarea>
+
+          <div class="capsule-right-actions">
+            <!-- Dedicated Voice Sphere Launcher -->
+            <button class="aura-capsule-voice-btn" id="launchLiveVoicePillBtn" title="Launch Live Voice Mode">
+              <div class="voice-sparkle-dot"></div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+              </svg>
+            </button>
+
+            <!-- Send Up-Arrow Button (From Video Morphing Card) -->
+            <button class="aura-capsule-send-btn" id="sendBtn" title="Send message" disabled>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="19" x2="12" y2="5"></line>
+                <polyline points="5 12 12 5 19 12"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="aura-legal-sub">
+          SUNO AI v0.6.7 can assist with thoughts, reasoning, emotional support, and voice. Created & trained by Sudipta.
+        </div>
+      </div>
+
+      <!-- IN-CARD LIVE VOICE ASSISTANT STAGE (Embedded inside the main canvas card) -->
+      <div class="live-voice-screen modern-dola-screen in-card-voice-screen" id="liveVoiceScreen">
+
+        <!-- In-Card Minimalist Top Bar -->
+        <div class="live-voice-topbar modern-topbar">
+          <div class="voice-top-left-brand">
+            <button class="voice-top-icon-btn" id="voiceBackBtn" title="Back to Chat Feed">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <div class="voice-brand-pill">
+              <img src="SUNO.png" alt="SUNO" class="voice-brand-icon">
+              <span>SUNO Live</span>
+            </div>
+          </div>
+
+          <div class="voice-top-right-tools">
+            <!-- Multilingual Voice Language selector -->
+            <select id="liveVoiceLangSelect" class="live-dropdown-pill" title="Voice Language">
+              <option value="auto" selected>✨ Auto Detect</option>
+              <option value="hi-IN">🇮🇳 Hindi (हिन्दी)</option>
+              <option value="en-US">🌐 English (US)</option>
+              <option value="bn-IN">🇧🇩 Bengali (বাংলা)</option>
+            </select>
+
+            <!-- Microphone Device Selector -->
+            <select id="liveMicDeviceSelect" class="live-dropdown-pill" title="Microphone Device">
+              <option value="default">🎙️ Default Mic</option>
+            </select>
+
+            <!-- Exit Voice Mode -->
+            <button class="voice-top-icon-btn close-voice-action" id="dockEndVoiceBtn" title="Exit Voice Mode">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Main In-Card Dynamic Center Stage -->
+        <div class="live-voice-center modern-voice-center">
+          <!-- Dynamic Audio Harmonic Quantum Circle Stage -->
+          <div class="voice-wave-ribbon-wrapper" id="voiceWaveRibbonWrapper">
+            <canvas id="liveVoiceWaveCanvas" width="420" height="420"></canvas>
+          </div>
+
+          <!-- Live Dialogue Transcripts Feed (Floating Subtitles) -->
+          <div class="floating-dialogue-lower modern-dialogue-feed">
+            <div class="live-transcript-user" id="liveTranscriptUser"></div>
+            <div class="live-transcript-ai" id="liveTranscriptAi"></div>
+          </div>
+
+          <!-- Realtime State Indicator Pill -->
+          <div class="aura-state-indicator modern-state-pill" id="auraStateIndicator">
+            <span class="stardust-glow"></span>
+            <span class="live-voice-status" id="liveVoiceStatusText">Listening... Speak now</span>
+          </div>
+        </div>
+
+        <!-- Bottom Control Unified Pill Dock -->
+        <div class="live-voice-dock modern-voice-dock">
+          <div class="modern-dock-unified-bar">
+            <!-- Quick Type / Text Input Option -->
+            <div class="dock-type-container" id="dockTypeContainer">
+              <span class="dock-type-prefix-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="4" y1="9" x2="20" y2="9"></line>
+                  <line x1="4" y1="15" x2="20" y2="15"></line>
+                  <line x1="10" y1="3" x2="8" y2="21"></line>
+                  <line x1="16" y1="3" x2="14" y2="21"></line>
+                </svg>
+              </span>
+              <input 
+                type="text" 
+                id="dockTextInput" 
+                class="dock-text-input" 
+                placeholder="Type or speak to SUNO AI..." 
+                autocomplete="off"
+              />
+              <button class="dock-btn-icon dock-send-btn" id="dockSendBtn" title="Send query">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="19" x2="12" y2="5"></line>
+                  <polyline points="5 12 12 5 19 12"></polyline>
+                </svg>
+              </button>
+            </div>
+
+            <div class="voice-screen-action-group">
+              <!-- Audio Speaker Mute Toggle -->
+              <button class="voice-side-btn modern-action-btn" id="dockSpeakerBtn" title="Audio Speaker Mute / Unmute">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                </svg>
+              </button>
+
+              <!-- Core Microphone Button -->
+              <div class="voice-mic-halo-container modern-mic-halo">
+                <button class="voice-iridescent-mic-btn modern-mic-btn" id="dockMicToggleBtn" title="Toggle Microphone">
+                  <svg id="dockMicIcon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal-dialog aura-glass-dialog">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <div class="aura-mini-gem"></div>
+          <h3>SUNO AI Configuration</h3>
+        </div>
+        <button class="modal-close-action-btn" id="closeSettingsBtn" title="Close Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Neural Model Engine</div>
+            <div class="setting-desc">Select primary reasoning pipeline</div>
+          </div>
+          <select id="apiProviderSelect" class="form-select aura-select">
+            <option value="gemini">Google Gemini 1.5 Flash (Ultra-Fast Cloud)</option>
+            <option value="builtin">Ollama (qwen3:4b-instruct Local Offline)</option>
+            <option value="openai">OpenAI (GPT-4o Mini)</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Custom API Key</div>
+            <div class="setting-desc">Optional developer / enterprise token override</div>
+          </div>
+          <input type="password" id="apiKeyInput" class="aura-input" placeholder="AIzaSy... or sk-...">
+        </div>
+
+        <!-- Model Credits & Token Quota Monitor Card -->
+        <div class="credit-monitor-card" id="creditMonitorCard">
+          <div class="credit-monitor-header">
+            <div class="credit-title-group">
+              <span class="credit-icon">⚡</span>
+              <div>
+                <div class="setting-label" style="font-size: 13.5px;">Live Credit & Quota Monitor</div>
+                <div class="setting-desc">Real-time token and context quota consumption</div>
+              </div>
+            </div>
+            <button id="resetCreditsBtn" class="aura-reset-btn" title="Reset usage statistics">
+              <svg class="reset-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              <span>Reset</span>
+            </button>
+          </div>
+          <div class="model-credit-list" id="modelCreditList">
+            <!-- Dynamic model credit cards rendered by app.js -->
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Vocal Tempo</div>
+            <div class="setting-desc">Voice synthesis playback speed</div>
+          </div>
+          <div class="tempo-slider-group">
+            <input type="range" id="speechSpeed" min="0.8" max="1.4" step="0.05" value="1.05">
+            <span id="speedDisplay" class="tempo-badge">1.05x</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="clearChatBtn" class="btn-danger-link">Purge Memory</button>
+        <button id="saveSettingsBtn" class="btn-save aura-btn-primary">Apply Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="voiceAssistant.js"></script>
+  <script src="voice-live.js"></script>
+</body>
+</html>

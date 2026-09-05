@@ -1,0 +1,997 @@
+/**
+ * Modular Real-Time Voice Assistant Service (voiceAssistant.js)
+ * Google Gemini Live API native audio streaming with fallback to chunked pipeline.
+ *
+ * Features:
+ * - Persistent WebSocket session to backend bridge connected to Gemini Live (@google/genai SDK)
+ * - Continuous Web Audio API mic capture downsampled to 16kHz 1-channel linear PCM
+ * - Streaming audio playback queue using AudioContext buffer scheduling (24kHz PCM from Gemini Live)
+ * - Real-time Voice Activity Detection (VAD) & Barge-in / interruption
+ * - Live AnalyserNode audio level and frequency exposure for 3D ribbon / visualizer
+ * - Native multi-turn conversational session state
+ * - Automatic fallback pipeline (Web Speech STT -> LLM Stream -> TTS) if Live API is unavailable
+ */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define([], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.VoiceAssistant = factory();
+  }
+}(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // Session State Enum
+  const VoiceState = {
+    IDLE: 'IDLE',
+    CONNECTING: 'CONNECTING',
+    READY: 'READY',
+    LISTENING: 'LISTENING',
+    USER_SPEAKING: 'USER_SPEAKING',
+    THINKING: 'THINKING',
+    AI_SPEAKING: 'AI_SPEAKING',
+    INTERRUPTED: 'INTERRUPTED',
+    ERROR: 'ERROR'
+  };
+
+  class VoiceAssistantService {
+    constructor(options = {}) {
+      this.options = Object.assign({
+        wsUrl: null, // Default calculates from window.location
+        vadThreshold: 0.02, // RMS threshold for speech detection
+        silenceDurationMs: 650, // Silence window to commit user turn in fallback mode
+        inputSampleRate: 16000,
+        outputSampleRate: 24000,
+        enableGeminiLive: true,
+        onStateChange: null,
+        onAudioLevel: null,
+        onTranscript: null,
+        onInterruption: null,
+        onError: null
+      }, options);
+
+      this.state = VoiceState.IDLE;
+      this.ws = null;
+      this.isLiveApiMode = false;
+      this.isMuted = false;
+
+      // Web Audio Input
+      this.audioContext = null;
+      this.mediaStream = null;
+      this.inputSource = null;
+      this.inputAnalyser = null;
+      this.scriptProcessor = null;
+      this.userSpeechActive = false;
+      this.vadSilenceTimer = null;
+
+      // Web Audio Output (Buffer Queue for streaming PCM)
+      this.outputAudioContext = null;
+      this.outputAnalyser = null;
+      this.audioQueue = []; // Array of Float32Array chunks
+      this.isPlayingQueue = false;
+      this.scheduledEndTime = 0;
+      this.activeSources = [];
+
+      // Fallback Engine (Web Speech STT + Browser TTS)
+      this.fallbackSpeechRecognition = null;
+      this.fallbackSpeechQueue = [];
+      this.isFallbackPlaying = false;
+      this.currentUtterance = null;
+      this.interimDebounceTimer = null;
+
+      // Analyser Shared State
+      this.inputFreqData = new Uint8Array(64);
+      this.outputFreqData = new Uint8Array(64);
+      this.currentRMS = 0;
+      this.animationLoopActive = false;
+    }
+
+    // ==========================================
+    // STATE & EVENT DISPATCH
+    // ==========================================
+    _setState(newState, payload = {}) {
+      if (this.state === newState && !payload.force) return;
+      this.state = newState;
+      if (typeof this.options.onStateChange === 'function') {
+        try {
+          this.options.onStateChange(this.state, payload);
+        } catch (e) {
+          console.error('[VoiceAssistant] onStateChange callback error:', e);
+        }
+      }
+    }
+
+    _emitError(message, details = null) {
+      console.warn('[VoiceAssistant Error]:', message, details);
+      this._setState(VoiceState.ERROR, { message, details });
+      if (typeof this.options.onError === 'function') {
+        try {
+          this.options.onError(message, details);
+        } catch (e) {}
+      }
+    }
+
+    _emitTranscript(role, text, isFinal = true) {
+      if (typeof this.options.onTranscript === 'function') {
+        try {
+          this.options.onTranscript({ role, text, isFinal });
+        } catch (e) {}
+      }
+    }
+
+    // ==========================================
+    // AUDIO INPUT CAPTURE & RESAMPLING (16kHz PCM)
+    // ==========================================
+    async _initAudioInput(deviceId = null) {
+      try {
+        console.log('[Mic] Requesting microphone permission');
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!this.audioContext || this.audioContext.state === 'closed') {
+          this.audioContext = new AudioContextClass();
+        }
+        if (this.audioContext.state === 'suspended') {
+          await this.audioContext.resume();
+          console.log('[Audio] AudioContext state: running');
+        } else {
+          console.log(`[Audio] AudioContext state: ${this.audioContext.state}`);
+        }
+
+        if (this.mediaStream) {
+          this.mediaStream.getTracks().forEach(t => t.stop());
+          this.mediaStream = null;
+        }
+
+        const constraints = {
+          audio: {
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        };
+        if (deviceId && deviceId !== 'default') {
+          constraints.audio.deviceId = { exact: deviceId };
+        }
+
+        this.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('[Mic] Permission granted');
+
+        const track = this.mediaStream.getAudioTracks()[0];
+        const settings = track ? track.getSettings() : {};
+        console.log(`[Mic] Selected device: ${track ? track.label : 'Default'}`);
+        console.log(`[Mic] Stream started`);
+        console.log(`[Mic] Track state: ${track ? track.readyState : 'none'}`);
+        console.log(`[Mic] Track enabled: ${track ? track.enabled : false}`);
+        console.log(`[Mic] Track muted: ${track ? track.muted : false}`);
+        console.log(`[Mic] Sample rate: ${this.audioContext.sampleRate}`);
+        console.log(`[Mic] Channel count: ${settings.channelCount || 1}`);
+        console.log(`[Mic] AudioContext state: ${this.audioContext.state}`);
+
+        this.selectedDeviceLabel = track ? track.label : 'Default';
+        this.inputSource = this.audioContext.createMediaStreamSource(this.mediaStream);
+
+        this.inputAnalyser = this.audioContext.createAnalyser();
+        this.inputAnalyser.fftSize = 128;
+        this.inputAnalyser.smoothingTimeConstant = 0.3;
+        this.inputSource.connect(this.inputAnalyser);
+
+        // Continuous PCM Streaming via ScriptProcessorNode / AudioWorklet
+        const bufferSize = 2048; // ~43ms buffer at 48kHz, ~128ms at 16kHz
+        this.scriptProcessor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+
+        // Diagnostic meters
+        this._lastMicLog = 0;
+        this._totalPcmBytesSent = 0;
+        this._hasHeardNonZeroSignal = false;
+        this._framesCapturedCount = 0;
+
+        this.scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+          if (this.isMuted || this.state === VoiceState.IDLE) return;
+
+          this._framesCapturedCount++;
+          const inputBuffer = audioProcessingEvent.inputBuffer;
+          const inputData = inputBuffer.getChannelData(0);
+
+          // 1. Run local Voice Activity Detection (VAD) & Barge-in check
+          this._processVAD(inputData);
+
+          // 2. Downsample to 16,000Hz 16-bit linear PCM and send over socket
+          let pcm16Data = null;
+          if (this.isLiveApiMode && this.ws && this.ws.readyState === WebSocket.OPEN) {
+            pcm16Data = this._resampleAndEncodePCM16(
+              inputData,
+              inputBuffer.sampleRate,
+              this.options.inputSampleRate
+            );
+            if (pcm16Data && pcm16Data.byteLength > 0) {
+              const base64Data = this._arrayBufferToBase64(pcm16Data);
+              this.ws.send(JSON.stringify({
+                type: 'live.pcm_chunk',
+                data: base64Data
+              }));
+              this._totalPcmBytesSent += pcm16Data.byteLength;
+            }
+          }
+
+          // 3. Throttled Diagnostics Logging (every ~500ms)
+          const now = performance.now();
+          if (now - this._lastMicLog > 500) {
+            this._lastMicLog = now;
+            const rawRms = (this.currentRMS / 100).toFixed(4);
+            console.log(`[Mic] Audio frames captured: ${this._framesCapturedCount} | Audio RMS: ${rawRms} | Track state: ${track ? track.readyState : 'none'} | AudioContext: ${this.audioContext.state}`);
+
+            if (pcm16Data && pcm16Data.byteLength > 0) {
+              const durationMs = Math.round((pcm16Data.byteLength / (this.options.inputSampleRate * 2)) * 1000);
+              console.log(`[PCM] sampleRate: ${this.options.inputSampleRate} | channels: 1 | bitDepth: 16 | byteLength: ${pcm16Data.byteLength} | durationMs: ${durationMs}`);
+              console.log(`[WS] microphone PCM sent: ${this._totalPcmBytesSent} total bytes | [Live] Audio sent to AI`);
+            } else if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
+              console.warn('[WS] Cannot send microphone audio — socket not open');
+            }
+          }
+        };
+
+        this.inputSource.connect(this.scriptProcessor);
+        // Connect to silent gain to keep the processor running without audio feedback
+        const silentGain = this.audioContext.createGain();
+        silentGain.gain.value = 0;
+        this.scriptProcessor.connect(silentGain);
+        silentGain.connect(this.audioContext.destination);
+
+        // Expose Live Developer Diagnostic Tool
+        window.auraAudioDiagnostics = () => {
+          const t = this.mediaStream ? this.mediaStream.getAudioTracks()[0] : null;
+          const diag = {
+            "Microphone": t ? (t.readyState === 'live' ? 'OK' : t.readyState) : 'NOT DETECTED',
+            "Device": this.selectedDeviceLabel || (t ? t.label : 'None'),
+            "Track": t ? t.readyState : 'closed',
+            "AudioContext": this.audioContext ? this.audioContext.state : 'null',
+            "Input sample rate": this.audioContext ? this.audioContext.sampleRate : 0,
+            "Output PCM rate": this.options.inputSampleRate,
+            "RMS": (this.currentRMS / 100).toFixed(4),
+            "PCM conversion": this._framesCapturedCount > 0 ? 'OK' : 'PENDING',
+            "WebSocket": this.ws ? (this.ws.readyState === WebSocket.OPEN ? 'OPEN' : this.ws.readyState) : 'DISCONNECTED',
+            "Live session": this.isLiveApiMode ? 'READY (Gemini Native)' : 'READY (Streaming Fallback)',
+            "Audio packets sent": this._totalPcmBytesSent > 0 ? 'YES' : 'NO',
+            "Gemini transcription": this.lastReceivedTranscript ? 'RECEIVING' : 'WAITING'
+          };
+          console.table(diag);
+          return diag;
+        };
+
+        return true;
+      } catch (err) {
+        console.warn('[VoiceAssistant] Direct audio capture initialization error:', err);
+        let userMsg = 'Microphone unavailable';
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          userMsg = 'Microphone permission required';
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          userMsg = 'Microphone unavailable';
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          userMsg = 'Microphone in use by another app';
+        }
+        this._emitError(userMsg, err);
+        return false;
+      }
+    }
+
+    _resampleAndEncodePCM16(inputData, fromSampleRate, toSampleRate) {
+      if (fromSampleRate === toSampleRate) {
+        return this._floatTo16BitPCM(inputData);
+      }
+      const ratio = fromSampleRate / toSampleRate;
+      const targetLength = Math.round(inputData.length / ratio);
+      const resampled = new Float32Array(targetLength);
+      for (let i = 0; i < targetLength; i++) {
+        const originalIndex = Math.min(Math.floor(i * ratio), inputData.length - 1);
+        resampled[i] = inputData[originalIndex];
+      }
+      return this._floatTo16BitPCM(resampled);
+    }
+
+    _floatTo16BitPCM(floatArray) {
+      const buffer = new ArrayBuffer(floatArray.length * 2);
+      const view = new DataView(buffer);
+      for (let i = 0; i < floatArray.length; i++) {
+        const s = Math.max(-1, Math.min(1, floatArray[i]));
+        view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true); // Little-endian
+      }
+      return buffer;
+    }
+
+    _arrayBufferToBase64(buffer) {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return window.btoa(binary);
+    }
+
+    _base64ToArrayBuffer(base64) {
+      const binaryString = window.atob(base64);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+
+    // ==========================================
+    // VOICE ACTIVITY DETECTION (VAD) & BARGE-IN
+    // ==========================================
+    _processVAD(floatData) {
+      let sum = 0;
+      for (let i = 0; i < floatData.length; i++) {
+        sum += floatData[i] * floatData[i];
+      }
+      const rms = Math.sqrt(sum / floatData.length);
+      this.currentRMS = rms * 100; // Scaled 0 - 100
+
+      // Track if we ever received a non-zero audio signal (> 0.003)
+      if (rms > 0.005) {
+        this._hasHeardNonZeroSignal = true;
+        this._silentFramesCount = 0;
+      } else {
+        this._silentFramesCount = (this._silentFramesCount || 0) + 1;
+      }
+
+      // Check for zero-signal microphone warning (e.g. Steam Streaming Mic or muted mic)
+      // 2048 samples at 48kHz is ~43ms. 45 frames is ~2 seconds of pure silence
+      if (this._silentFramesCount > 45 && !this._hasHeardNonZeroSignal && this.state === VoiceState.LISTENING) {
+        if (!this._warnedNoSignal) {
+          this._warnedNoSignal = true;
+          this._setState(VoiceState.LISTENING, {
+            message: 'Microphone input detected but no audio signal.'
+          });
+        }
+      } else if (this._hasHeardNonZeroSignal && this._warnedNoSignal) {
+        this._warnedNoSignal = false;
+        if (this.state === VoiceState.LISTENING) {
+          this._setState(VoiceState.LISTENING, {
+            message: 'Microphone audio detected.'
+          });
+        }
+      }
+
+      const isSpeech = rms > this.options.vadThreshold;
+
+      if (isSpeech && !this.isMuted) {
+        // BARGE-IN: If model is speaking or thinking, interrupt immediately!
+        if (this.state === VoiceState.AI_SPEAKING || this.state === VoiceState.THINKING) {
+          this.interrupt();
+        }
+
+        if (!this.userSpeechActive) {
+          this.userSpeechActive = true;
+          if (this.state !== VoiceState.INTERRUPTED) {
+            this._setState(VoiceState.USER_SPEAKING, { rms: this.currentRMS, message: 'Listening to you...' });
+          }
+        }
+
+        if (this.vadSilenceTimer) {
+          clearTimeout(this.vadSilenceTimer);
+          this.vadSilenceTimer = null;
+        }
+      } else {
+        if (this.userSpeechActive && !this.vadSilenceTimer) {
+          this.vadSilenceTimer = setTimeout(() => {
+            this.userSpeechActive = false;
+            this.vadSilenceTimer = null;
+
+            // When user speech ends, signal end of turn to Gemini Live session
+            if (this.isLiveApiMode && this.ws && this.ws.readyState === WebSocket.OPEN) {
+              this.ws.send(JSON.stringify({ type: 'live.activity_end' }));
+            }
+
+            if (this.state === VoiceState.USER_SPEAKING) {
+              this._setState(VoiceState.THINKING);
+            }
+          }, this.options.silenceDurationMs);
+        }
+      }
+    }
+
+    // ==========================================
+    // STREAMING AUDIO OUTPUT (24kHz PCM Buffer Queue)
+    // ==========================================
+    _initAudioOutput() {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!this.outputAudioContext || this.outputAudioContext.state === 'closed') {
+        this.outputAudioContext = new AudioContextClass();
+      }
+      if (this.outputAudioContext.state === 'suspended') {
+        this.outputAudioContext.resume();
+      }
+
+      if (!this.outputAnalyser) {
+        this.outputAnalyser = this.outputAudioContext.createAnalyser();
+        this.outputAnalyser.fftSize = 128;
+        this.outputAnalyser.smoothingTimeConstant = 0.3;
+        this.outputAnalyser.connect(this.outputAudioContext.destination);
+      }
+    }
+
+    _enqueueIncomingPCMChunk(base64PCM, sampleRate = 24000) {
+      this._initAudioOutput();
+
+      const rawBuffer = this._base64ToArrayBuffer(base64PCM);
+      const dataView = new DataView(rawBuffer);
+      const numSamples = Math.floor(rawBuffer.byteLength / 2);
+      const float32Array = new Float32Array(numSamples);
+
+      for (let i = 0; i < numSamples; i++) {
+        const int16 = dataView.getInt16(i * 2, true);
+        float32Array[i] = int16 / 32768.0;
+      }
+
+      this.audioQueue.push({
+        data: float32Array,
+        sampleRate: sampleRate
+      });
+
+      if (!this.isPlayingQueue) {
+        this._scheduleNextAudioChunk();
+      }
+    }
+
+    _scheduleNextAudioChunk() {
+      if (this.audioQueue.length === 0) {
+        this.isPlayingQueue = false;
+        if (this.state === VoiceState.AI_SPEAKING) {
+          this._setState(VoiceState.LISTENING);
+        }
+        return;
+      }
+
+      this.isPlayingQueue = true;
+      if (this.state !== VoiceState.AI_SPEAKING) {
+        this._setState(VoiceState.AI_SPEAKING);
+      }
+
+      const chunk = this.audioQueue.shift();
+      const ctx = this.outputAudioContext;
+      const audioBuffer = ctx.createBuffer(1, chunk.data.length, chunk.sampleRate);
+      audioBuffer.getChannelData(0).set(chunk.data);
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(this.outputAnalyser);
+
+      const currentTime = ctx.currentTime;
+      const startTime = Math.max(currentTime, this.scheduledEndTime);
+      source.start(startTime);
+      this.scheduledEndTime = startTime + audioBuffer.duration;
+
+      this.activeSources.push(source);
+      source.onended = () => {
+        const idx = this.activeSources.indexOf(source);
+        if (idx !== -1) this.activeSources.splice(idx, 1);
+        if (this.audioQueue.length > 0) {
+          this._scheduleNextAudioChunk();
+        } else if (this.activeSources.length === 0) {
+          this.isPlayingQueue = false;
+          if (this.state === VoiceState.AI_SPEAKING) {
+            this._setState(VoiceState.LISTENING);
+          }
+        }
+      };
+
+      // Keep pre-scheduling next chunk to eliminate stutter
+      if (this.audioQueue.length > 0) {
+        this._scheduleNextAudioChunk();
+      }
+    }
+
+    _stopAllAudioPlayback() {
+      // 1. Stop PCM audio sources
+      this.audioQueue = [];
+      for (const src of this.activeSources) {
+        try {
+          src.stop();
+          src.disconnect();
+        } catch (e) {}
+      }
+      this.activeSources = [];
+      this.scheduledEndTime = 0;
+      this.isPlayingQueue = false;
+
+      // 2. Stop Browser TTS fallback
+      if (window.speechSynthesis) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch (e) {}
+      }
+      this.fallbackSpeechQueue = [];
+      this.isFallbackPlaying = false;
+      this.currentUtterance = null;
+    }
+
+    // ==========================================
+    // BARGE-IN / INTERRUPTION METHOD
+    // ==========================================
+    interrupt() {
+      console.log('[VoiceAssistant] Barge-in / Interruption triggered.');
+      this._stopAllAudioPlayback();
+
+      // Notify WebSocket backend to immediately abort model turn / flush server audio buffers
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'user.interruption' }));
+      }
+
+      this._setState(VoiceState.INTERRUPTED);
+      if (typeof this.options.onInterruption === 'function') {
+        try {
+          this.options.onInterruption();
+        } catch (e) {}
+      }
+
+      setTimeout(() => {
+        if (this.state === VoiceState.INTERRUPTED) {
+          this._setState(VoiceState.LISTENING);
+        }
+      }, 120);
+    }
+
+    // ==========================================
+    // WEBSOCKET PERSISTENT SESSION & PROTOCOL
+    // ==========================================
+    connect(config = {}) {
+      if (this.ws) {
+        this.disconnect();
+      }
+
+      if (config.language) {
+        this.selectedLang = config.language !== 'auto' ? config.language : (navigator.language || 'en-US');
+      }
+
+      // Synchronously create/resume AudioContexts on direct user gesture
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!this.audioContext || this.audioContext.state === 'closed') {
+        this.audioContext = new AudioContextClass();
+      }
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
+      }
+
+      if (!this.outputAudioContext || this.outputAudioContext.state === 'closed') {
+        this.outputAudioContext = new AudioContextClass();
+      }
+      if (this.outputAudioContext.state === 'suspended') {
+        this.outputAudioContext.resume().catch(() => {});
+      }
+
+      this._setState(VoiceState.CONNECTING);
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = this.options.wsUrl || `${protocol}//${window.location.host}/voice-ws`;
+
+      try {
+        this.ws = new WebSocket(wsUrl);
+      } catch (err) {
+        this._emitError('WebSocket connection error: ' + err.message);
+        return;
+      }
+
+      this.ws.onopen = async () => {
+        console.log('[VoiceAssistant WS] Connected to backend gateway.');
+        this._setState(VoiceState.READY);
+
+        // Initialize audio input hardware
+        await this._initAudioInput(config.deviceId);
+        this._initAudioOutput();
+        this._startVisualizerLoop();
+
+        // Send session initialization
+        const savedSettings = JSON.parse(localStorage.getItem('aura_settings') || localStorage.getItem('chatgpt_settings') || '{}');
+        const effectiveKey = config.apiKey || savedSettings.apiKey || '';
+
+        this.ws.send(JSON.stringify({
+          type: 'session.start',
+          history: config.history || [],
+          provider: config.provider || savedSettings.provider || 'gemini',
+          apiKey: effectiveKey,
+          enableGeminiLive: this.options.enableGeminiLive !== false,
+          model: 'gemini-3.1-flash-live-preview'
+        }));
+
+        this._setState(VoiceState.LISTENING);
+      };
+
+      this.ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+
+          switch (msg.type) {
+            case 'session.ready':
+              this.isLiveApiMode = !!msg.isGeminiLive;
+              console.log('[VoiceAssistant] Session established. Mode:', this.isLiveApiMode ? 'Gemini Native Live Audio' : 'Fallback Chunked STT/TTS');
+              // Always start speech recognition so user speech is transcribed with zero latency and high precision
+              this._initFallbackSpeechRecognition();
+              break;
+
+            case 'live.input_transcript':
+              if (msg.text) {
+                this.lastReceivedTranscript = msg.text;
+                console.log(`[Live] Input transcript: "${msg.text}" (final: ${!!msg.isFinal})`);
+                this._emitTranscript('user', msg.text, !!msg.isFinal);
+              }
+              break;
+
+            case 'live.audio_delta':
+              // Streaming 24kHz PCM from Gemini Live
+              if (msg.pcmBase64) {
+                this._enqueueIncomingPCMChunk(msg.pcmBase64, msg.sampleRate || 24000);
+              }
+              if (msg.text) {
+                // Filter internal model thought headers if any
+                const cleanText = msg.text.replace(/\*\*Crafting[^*]+\*\*/gi, '').replace(/\*\*Thinking[^*]+\*\*/gi, '').trim();
+                if (cleanText) {
+                  this._emitTranscript('assistant', cleanText, false);
+                }
+              }
+              break;
+
+            case 'live.turn_complete':
+              if (msg.fullText) {
+                const cleanFull = msg.fullText.replace(/\*\*Crafting[^*]+\*\*/gi, '').replace(/\*\*Thinking[^*]+\*\*/gi, '').trim();
+                this._emitTranscript('assistant', cleanFull, true);
+              }
+              if (!this.isPlayingQueue) {
+                this._setState(VoiceState.LISTENING);
+              }
+              break;
+
+            case 'response.start':
+              this._setState(VoiceState.THINKING);
+              break;
+
+            case 'response.delta':
+              this._emitTranscript('assistant', msg.token, false);
+              break;
+
+            case 'response.audio_chunk':
+              // Fallback chunked pipeline TTS
+              this._enqueueFallbackTTSChunk(msg.text);
+              break;
+
+            case 'response.complete':
+              this._emitTranscript('assistant', msg.text, true);
+              break;
+
+            case 'interruption.ack':
+              console.log('[VoiceAssistant] Backend acknowledged interruption.');
+              break;
+
+            case 'fallback.active':
+              console.warn('[VoiceAssistant] Falling back to chunked pipeline:', msg.reason);
+              this.isLiveApiMode = false;
+              this._initFallbackSpeechRecognition();
+              break;
+
+            case 'error':
+              this._emitError(msg.message);
+              break;
+          }
+        } catch (e) {
+          console.error('[VoiceAssistant] Error handling WebSocket message:', e);
+        }
+      };
+
+      this.ws.onclose = (event) => {
+        console.warn(`[VoiceAssistant WS] Closed. Code: ${event.code}, Reason: "${event.reason || 'None'}", WasClean: ${event.wasClean}`);
+        if (this.state !== VoiceState.IDLE) {
+          this._setState(VoiceState.IDLE, { message: 'Session closed' });
+        }
+      };
+
+      this.ws.onerror = (e) => {
+        console.warn('[VoiceAssistant WS Error]:', e);
+        this._emitError('WebSocket communication error');
+      };
+    }
+
+    // Switch microphone device dynamically without tearing down the WebSocket
+    async switchMicrophone(deviceId) {
+      console.log(`[Mic] Switching microphone to: ${deviceId}`);
+      try {
+        if (this.scriptProcessor) {
+          this.scriptProcessor.disconnect();
+          this.scriptProcessor = null;
+        }
+        if (this.inputSource) {
+          this.inputSource.disconnect();
+          this.inputSource = null;
+        }
+        if (this.inputAnalyser) {
+          this.inputAnalyser.disconnect();
+          this.inputAnalyser = null;
+        }
+        if (this.mediaStream) {
+          this.mediaStream.getTracks().forEach(t => t.stop());
+          this.mediaStream = null;
+        }
+
+        const success = await this._initAudioInput(deviceId);
+        if (success) {
+          console.log(`[Mic] Successfully switched microphone to: ${this.selectedDeviceLabel || deviceId}`);
+        }
+        return success;
+      } catch (err) {
+        console.error('[Mic] Failed to switch microphone:', err);
+        return false;
+      }
+    }
+
+    disconnect() {
+      console.log('[VoiceAssistant] Disconnecting session.');
+      this._stopAllAudioPlayback();
+
+      if (this.fallbackSpeechRecognition) {
+        try {
+          this.fallbackSpeechRecognition.stop();
+        } catch (e) {}
+        this.fallbackSpeechRecognition = null;
+      }
+
+      if (this.scriptProcessor) {
+        this.scriptProcessor.disconnect();
+        this.scriptProcessor = null;
+      }
+
+      if (this.mediaStream) {
+        this.mediaStream.getTracks().forEach(t => t.stop());
+        this.mediaStream = null;
+      }
+
+      if (this.audioContext && this.audioContext.state !== 'closed') {
+        this.audioContext.close();
+        this.audioContext = null;
+      }
+
+      if (this.outputAudioContext && this.outputAudioContext.state !== 'closed') {
+        this.outputAudioContext.close();
+        this.outputAudioContext = null;
+      }
+
+      if (this.ws) {
+        this.ws.close();
+        this.ws = null;
+      }
+
+      this.animationLoopActive = false;
+      this._setState(VoiceState.IDLE);
+    }
+
+    send(content) {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        console.warn('[VoiceAssistant] Cannot send message - socket not open.');
+        return;
+      }
+
+      if (typeof content === 'string') {
+        this._emitTranscript('user', content, true);
+        this._setState(VoiceState.THINKING);
+
+        if (this.isLiveApiMode) {
+          this.ws.send(JSON.stringify({
+            type: 'live.text_turn',
+            text: content
+          }));
+        } else {
+          this.ws.send(JSON.stringify({
+            type: 'audio.transcription',
+            text: content
+          }));
+        }
+      }
+    }
+
+    setMuted(muted) {
+      this.isMuted = !!muted;
+      if (this.isMuted) {
+        this._stopAllAudioPlayback();
+        if (this.fallbackSpeechRecognition) {
+          try { this.fallbackSpeechRecognition.stop(); } catch (e) {}
+        }
+      } else {
+        if (!this.isLiveApiMode && this.fallbackSpeechRecognition) {
+          try { this.fallbackSpeechRecognition.start(); } catch (e) {}
+        }
+      }
+    }
+
+    setLanguage(langCode) {
+      this.selectedLang = (langCode && langCode !== 'auto') ? langCode : (navigator.language || 'en-US');
+      console.log('[VoiceAssistant] Language configured to:', this.selectedLang);
+      if (this.fallbackSpeechRecognition) {
+        this.fallbackSpeechRecognition.lang = this.selectedLang;
+      }
+    }
+
+    // ==========================================
+    // VISUAL FEEDBACK & ANALYSER INTEGRATION
+    // ==========================================
+    _startVisualizerLoop() {
+      this.animationLoopActive = true;
+      const updateData = () => {
+        if (!this.animationLoopActive) return;
+
+        let activeRMS = 0;
+
+        if (this.state === VoiceState.AI_SPEAKING && this.outputAnalyser) {
+          this.outputAnalyser.getByteFrequencyData(this.outputFreqData);
+          let sum = 0;
+          for (let i = 0; i < this.outputFreqData.length; i++) {
+            sum += this.outputFreqData[i] * this.outputFreqData[i];
+          }
+          activeRMS = Math.sqrt(sum / this.outputFreqData.length);
+        } else if (this.inputAnalyser) {
+          this.inputAnalyser.getByteFrequencyData(this.inputFreqData);
+          activeRMS = this.currentRMS;
+        }
+
+        if (typeof this.options.onAudioLevel === 'function') {
+          this.options.onAudioLevel({
+            rms: activeRMS,
+            frequencyData: this.state === VoiceState.AI_SPEAKING ? this.outputFreqData : this.inputFreqData,
+            state: this.state
+          });
+        }
+
+        requestAnimationFrame(updateData);
+      };
+      requestAnimationFrame(updateData);
+    }
+
+    getAudioVisualData() {
+      return {
+        rms: this.currentRMS,
+        frequencyData: this.state === VoiceState.AI_SPEAKING ? this.outputFreqData : this.inputFreqData,
+        state: this.state
+      };
+    }
+
+    // ==========================================
+    // FALLBACK CHUNKED PIPELINE (Web Speech API STT + TTS)
+    // ==========================================
+    _initFallbackSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        console.warn('[VoiceAssistant] Fallback SpeechRecognition not supported in browser.');
+        return;
+      }
+
+      if (this.fallbackSpeechRecognition) {
+        try { this.fallbackSpeechRecognition.abort(); } catch (e) {}
+      }
+
+      this.fallbackSpeechRecognition = new SpeechRecognition();
+      this.fallbackSpeechRecognition.continuous = false;
+      this.fallbackSpeechRecognition.interimResults = true;
+      this.fallbackSpeechRecognition.maxAlternatives = 1;
+      this.fallbackSpeechRecognition.lang = this.selectedLang || navigator.language || 'en-US';
+
+      this.fallbackSpeechRecognition.onresult = (event) => {
+        let interim = '';
+        let finalStr = '';
+        for (let i = 0; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalStr += event.results[i][0].transcript;
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+
+        const heard = (finalStr || interim).trim();
+        if (heard) {
+          this._emitTranscript('user', heard, !!finalStr);
+          if (this.interimDebounceTimer) clearTimeout(this.interimDebounceTimer);
+
+          if (finalStr.trim()) {
+            this.send(finalStr.trim());
+          } else {
+            this.interimDebounceTimer = setTimeout(() => {
+              if (heard && this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING) {
+                this.send(heard);
+              }
+            }, 600);
+          }
+        }
+      };
+
+      this.fallbackSpeechRecognition.onspeechstart = () => {
+        console.log('[VoiceAssistant STT] Speech start detected from user.');
+        if (this.state === VoiceState.AI_SPEAKING || this.state === VoiceState.THINKING) {
+          this.interrupt();
+        }
+        this._setState(VoiceState.USER_SPEAKING);
+      };
+
+      this.fallbackSpeechRecognition.onsoundstart = () => {
+        if (this.state === VoiceState.LISTENING) {
+          this._setState(VoiceState.USER_SPEAKING);
+        }
+      };
+
+      this.fallbackSpeechRecognition.onspeechend = () => {
+        console.log('[VoiceAssistant STT] Speech ended.');
+      };
+
+      this.fallbackSpeechRecognition.onerror = (e) => {
+        if (e.error !== 'no-speech') {
+          console.warn('[VoiceAssistant Fallback STT Error]:', e.error);
+        }
+      };
+
+      this.fallbackSpeechRecognition.onend = () => {
+        if (this.state !== VoiceState.IDLE && !this.isMuted) {
+          if (this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING) {
+            setTimeout(() => {
+              if (this.state !== VoiceState.IDLE && !this.isMuted) {
+                try { this.fallbackSpeechRecognition.start(); } catch (e) {}
+              }
+            }, 60);
+          }
+        }
+      };
+
+      try {
+        this.fallbackSpeechRecognition.start();
+      } catch (e) {}
+    }
+
+    _enqueueFallbackTTSChunk(text) {
+      if (!text) return;
+      this.fallbackSpeechQueue.push(text);
+      if (!this.isFallbackPlaying) {
+        this._playNextFallbackTTS();
+      }
+    }
+
+    _playNextFallbackTTS() {
+      if (this.fallbackSpeechQueue.length === 0) {
+        this.isFallbackPlaying = false;
+        if (this.state === VoiceState.AI_SPEAKING) {
+          this._setState(VoiceState.LISTENING);
+        }
+        if (this.fallbackSpeechRecognition && !this.isMuted) {
+          try { this.fallbackSpeechRecognition.start(); } catch (e) {}
+        }
+        return;
+      }
+
+      this.isFallbackPlaying = true;
+      this._setState(VoiceState.AI_SPEAKING);
+
+      const text = this.fallbackSpeechQueue.shift();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.05;
+
+      const langPrefix = (this.selectedLang || 'en').split('-')[0].toLowerCase();
+      utterance.lang = this.selectedLang || 'en-US';
+
+      const voices = window.speechSynthesis.getVoices();
+      const matchedVoice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix)) ||
+        voices.find(v => (v.name.includes('Natural') || v.name.includes('Google')) && v.lang.startsWith('en'));
+      if (matchedVoice) utterance.voice = matchedVoice;
+
+      this.currentUtterance = utterance;
+      utterance.onend = () => {
+        this.currentUtterance = null;
+        this._playNextFallbackTTS();
+      };
+      utterance.onerror = () => {
+        this.currentUtterance = null;
+        this._playNextFallbackTTS();
+      };
+
+      window.speechSynthesis.speak(utterance);
+    }
+  }
+
+  return VoiceAssistantService;
+}));
+
