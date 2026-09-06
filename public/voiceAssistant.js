@@ -579,8 +579,11 @@
         console.log('[VoiceAssistant WS] Connected to backend gateway.');
         this._setState(VoiceState.READY);
 
-        // Initialize audio input hardware
-        await this._initAudioInput(config.deviceId);
+        // Only capture raw microphone hardware stream when Gemini Live PCM streaming is explicitly active.
+        // In streaming fallback mode, SpeechRecognition manages the hardware mic directly to prevent Android audio conflicts.
+        if (this.isLiveApiMode) {
+          await this._initAudioInput(config.deviceId);
+        }
         this._initAudioOutput();
         this._startVisualizerLoop();
 
