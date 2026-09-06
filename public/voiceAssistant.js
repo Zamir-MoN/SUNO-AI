@@ -965,16 +965,19 @@
         this.fallbackSpeechRecognition = null;
       }
 
+      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
       this._isSttRunning = false;
       this.fallbackSpeechRecognition = new SpeechRecognition();
-      this.fallbackSpeechRecognition.continuous = true;
+      // On mobile devices, continuous mode often suppresses interim transcripts until connection drops.
+      // Setting continuous to false on mobile ensures instant, responsive recognition and turn-taking.
+      this.fallbackSpeechRecognition.continuous = !isMobile;
       this.fallbackSpeechRecognition.interimResults = true;
       this.fallbackSpeechRecognition.maxAlternatives = 1;
-      this.fallbackSpeechRecognition.lang = this.selectedLang || navigator.language || 'en-US';
+      this.fallbackSpeechRecognition.lang = this.selectedLang || 'hi-IN';
 
       this.fallbackSpeechRecognition.onstart = () => {
         this._isSttRunning = true;
-        console.log('[VoiceAssistant STT] Speech recognition active and listening.');
+        console.log(`[VoiceAssistant STT] Listening in ${this.fallbackSpeechRecognition.lang}`);
         if (this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING && !this.isMuted) {
           this._setState(VoiceState.LISTENING);
         }
@@ -985,15 +988,19 @@
         let interim = '';
         let finalStr = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalStr += event.results[i][0].transcript;
-          } else {
-            interim += event.results[i][0].transcript;
+          const item = event.results[i];
+          if (item && item[0]) {
+            if (item.isFinal) {
+              finalStr += item[0].transcript;
+            } else {
+              interim += item[0].transcript;
+            }
           }
         }
 
         const heard = (finalStr || interim).trim();
         if (heard) {
+          this._setState(VoiceState.USER_SPEAKING);
           this._emitTranscript('user', heard, !!finalStr);
 
           if (finalStr.trim()) {
@@ -1001,15 +1008,17 @@
               clearTimeout(this.interimDebounceTimer);
               this.interimDebounceTimer = null;
             }
+            console.log('[VoiceAssistant STT] Final recognized user speech:', finalStr.trim());
             this.send(finalStr.trim());
           } else if (interim.trim()) {
             if (this.interimDebounceTimer) clearTimeout(this.interimDebounceTimer);
             this.interimDebounceTimer = setTimeout(() => {
               const currentInterim = interim.trim();
               if (currentInterim && !this.isMuted && this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING) {
+                console.log('[VoiceAssistant STT] Interim debounced speech sent:', currentInterim);
                 this.send(currentInterim);
               }
-            }, 750);
+            }, 850);
           }
         }
       };
