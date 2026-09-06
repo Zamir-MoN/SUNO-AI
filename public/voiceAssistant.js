@@ -1187,12 +1187,13 @@
         }
       } catch (e) {}
 
-      // If text is Bengali or Hindi and no native female system voice exists on Windows, stream high-fidelity audio via local server proxy
-      if (!matchedVoice && (isBengaliText || isHindiText)) {
-        console.log(`[VoiceAssistant TTS] Streaming natural audio via server proxy for ${targetLang}`);
+      // PRIORITY 1: For Hindi (hi) & Bengali (bn), stream high-fidelity neural audio from server proxy
+      // This ensures 100% authentic human accent, correct Devanagari/Bengali pronunciation, and emotional warmth across all phones and PCs.
+      if (isBengaliText || isHindiText || targetLang.startsWith('hi') || targetLang.startsWith('bn')) {
+        const ttsLang = isBengaliText ? 'bn' : 'hi';
+        console.log(`[VoiceAssistant TTS] Streaming crystal-clear neural audio for ${ttsLang}`);
         try {
-          const ttsLang = isBengaliText ? 'bn' : 'hi';
-          const encoded = encodeURIComponent(text.substring(0, 200));
+          const encoded = encodeURIComponent(text.substring(0, 300));
           const audioUrl = `/api/tts?lang=${ttsLang}&text=${encoded}`;
           this._initAudioOutput();
           const audio = new Audio(audioUrl);
