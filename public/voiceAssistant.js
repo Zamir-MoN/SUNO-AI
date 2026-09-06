@@ -1118,9 +1118,10 @@
       }
 
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.96; // Smooth, relaxed natural human speech cadence
+      // Humanized prosody: slightly relaxed pacing and natural conversational pitch
+      utterance.rate = 0.94; 
       utterance.volume = 1.0;
-      utterance.pitch = 1.02; // Warm, natural human female pitch (not high-pitched or robotic)
+      utterance.pitch = 1.0; // Natural organic human baseline pitch (eliminates synthetic electronic resonance)
 
       // Auto-detect language strictly: Bengali (বাংলা), Hindi (हिन्दी), or English
       const isBengaliText = /[\u0980-\u09FF]/.test(text) || /\b(tumi|tomar|kemon|achen|korecho|banalo|kothay|shuncho|aajke|ekhon|bhalo|apni|apnar)\b/i.test(text);
