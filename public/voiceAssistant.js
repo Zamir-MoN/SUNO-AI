@@ -80,6 +80,7 @@
       this.isFallbackPlaying = false;
       this.currentUtterance = null;
       this.interimDebounceTimer = null;
+      this._hasSpokenIntro = false;
 
       // Analyser Shared State
       this.inputFreqData = new Uint8Array(64);
@@ -609,6 +610,15 @@
               console.log('[VoiceAssistant] Session established. Mode: High-Speed Streaming STT/TTS');
               this._initFallbackSpeechRecognition();
               this._setState(VoiceState.LISTENING);
+
+              // If brand new empty chat session, speak the introductory greeting once
+              const currentHistory = config.history || [];
+              if (!this._hasSpokenIntro && currentHistory.length === 0) {
+                this._hasSpokenIntro = true;
+                const introGreeting = "Main SUNO AI hoon! Mujhe Sudipta ne create aur train kiya hai aapke emotional support, dosti aur har tarah ki help ke liye. Bataiye, aaj main aapke liye kya kar sakti hoon?";
+                this._emitTranscript('assistant', introGreeting, true);
+                this._enqueueFallbackTTSChunk(introGreeting);
+              }
               break;
 
             case 'live.input_transcript':
