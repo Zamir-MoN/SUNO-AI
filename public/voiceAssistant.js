@@ -1189,11 +1189,10 @@
         }
       } catch (e) {}
 
-      // PRIORITY 1: For Hindi (hi) & Bengali (bn), stream high-fidelity neural audio from server proxy
-      // This ensures 100% authentic human accent, correct Devanagari/Bengali pronunciation, and emotional warmth across all phones and PCs.
+      // PRIORITY 1: For Hindi (hi-IN) & Bengali (bn-IN), stream authentic Indian neural audio
       if (isBengaliText || isHindiText || targetLang.startsWith('hi') || targetLang.startsWith('bn')) {
-        const ttsLang = isBengaliText ? 'bn' : 'hi';
-        console.log(`[VoiceAssistant TTS] Streaming crystal-clear neural audio for ${ttsLang}`);
+        const ttsLang = (isBengaliText || targetLang.startsWith('bn')) ? 'bn-IN' : 'hi-IN';
+        console.log(`[VoiceAssistant TTS] Streaming Indian audio for ${ttsLang}`);
         try {
           const encoded = encodeURIComponent(text.substring(0, 300));
           const audioUrl = `/api/tts?lang=${ttsLang}&text=${encoded}`;

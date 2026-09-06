@@ -551,13 +551,20 @@ app.get('/api/tts', async (req, res) => {
   if (!text) return res.status(400).send('Text required');
 
   const cleanText = (text || '').replace(/<[^>]*>/g, '').trim().substring(0, 200);
-  const targetLang = lang || 'bn';
+  let targetLang = lang || 'hi-IN';
+  if (targetLang === 'hi' || targetLang === 'hi-in' || targetLang === 'hindi') {
+    targetLang = 'hi-IN';
+  } else if (targetLang === 'bn' || targetLang === 'bn-in' || targetLang === 'bengali') {
+    targetLang = 'bn-IN';
+  } else if (targetLang === 'en') {
+    targetLang = 'en-IN';
+  }
 
   try {
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${targetLang}&client=tw-ob&q=${encodeURIComponent(cleanText)}`;
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${targetLang}&client=tw-ob&ttsspeed=0.92&q=${encodeURIComponent(cleanText)}`;
     const ttsRes = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
       }
     });
 
