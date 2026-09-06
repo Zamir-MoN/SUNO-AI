@@ -984,17 +984,7 @@
       };
 
       this.fallbackSpeechRecognition.onresult = (event) => {
-        if (this.isMuted || this.state === VoiceState.AI_SPEAKING || this.isFallbackPlaying) {
-          console.log('[VoiceAssistant STT] Ignored speaker self-echo feedback.');
-          return;
-        }
-
-        // Prevent echo pickup immediately after audio finishes
-        if (this._lastTtsEndTime && (Date.now() - this._lastTtsEndTime < 650)) {
-          console.log('[VoiceAssistant STT] Ignored acoustic echo in cooldown window.');
-          return;
-        }
-
+        if (this.isMuted) return;
         let interim = '';
         let finalStr = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -1018,17 +1008,14 @@
               clearTimeout(this.interimDebounceTimer);
               this.interimDebounceTimer = null;
             }
-            console.log('[VoiceAssistant STT] User speech captured:', finalStr.trim());
-            // Immediately stop recognition before sending to avoid hearing ourselves
-            try { this.fallbackSpeechRecognition.stop(); } catch (e) {}
+            console.log('[VoiceAssistant STT] Final recognized user speech:', finalStr.trim());
             this.send(finalStr.trim());
           } else if (interim.trim()) {
             if (this.interimDebounceTimer) clearTimeout(this.interimDebounceTimer);
             this.interimDebounceTimer = setTimeout(() => {
               const currentInterim = interim.trim();
-              if (currentInterim && !this.isMuted && this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING && !this.isFallbackPlaying) {
-                console.log('[VoiceAssistant STT] Interim speech sent:', currentInterim);
-                try { this.fallbackSpeechRecognition.stop(); } catch (e) {}
+              if (currentInterim && !this.isMuted && this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING) {
+                console.log('[VoiceAssistant STT] Interim debounced speech sent:', currentInterim);
                 this.send(currentInterim);
               }
             }, 850);
@@ -1117,7 +1104,6 @@
     _playNextFallbackTTS() {
       if (this.fallbackSpeechQueue.length === 0) {
         this.isFallbackPlaying = false;
-        this._lastTtsEndTime = Date.now();
         if ((this.state === VoiceState.AI_SPEAKING || this.state === VoiceState.THINKING) && !this.isMuted) {
           this._setState(VoiceState.LISTENING);
         }
@@ -1127,17 +1113,17 @@
         }
         if (this.fallbackSpeechRecognition && !this.isMuted) {
           setTimeout(() => {
-            if (!this.isFallbackPlaying && this.state !== VoiceState.AI_SPEAKING && !this.isMuted && !this._isSttRunning) {
+            if (!this.isFallbackPlaying && this.state !== VoiceState.AI_SPEAKING && !this.isMuted) {
               try { this.fallbackSpeechRecognition.start(); } catch (e) {}
             }
-          }, 600);
+          }, 350);
         }
         return;
       }
 
-      // Hard stop STT immediately during assistant speech
+      // Temporarily stop STT during assistant speech so the mic doesn't hear the speaker output
       if (this.fallbackSpeechRecognition) {
-        try { this.fallbackSpeechRecognition.abort(); } catch (e) {}
+        try { this.fallbackSpeechRecognition.stop(); } catch (e) {}
       }
 
       this.isFallbackPlaying = true;
