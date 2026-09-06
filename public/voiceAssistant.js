@@ -611,13 +611,13 @@
               this._initFallbackSpeechRecognition();
               this._setState(VoiceState.LISTENING);
 
-              // If brand new empty chat session, speak a clean, natural intro greeting
+              // If brand new empty chat session, speak a clean, natural intro greeting (Default: Hindi)
               const currentHistory = config.history || [];
               if (!this._hasSpokenIntro && currentHistory.length === 0) {
                 this._hasSpokenIntro = true;
-                let introGreeting = "Hello! I am SUNO AI, your compassionate companion. How can I support you today?";
-                if (this.selectedLang === 'hi-IN') {
-                  introGreeting = "नमस्ते! मैं SUNO AI हूँ। मुझे सुदीप्त ने आपके भावनात्मक सहयोग और बातचीत के लिए बनाया है। बताइए, आज मैं आपकी क्या मदद कर सकती हूँ?";
+                let introGreeting = "नमस्ते! मैं SUNO AI हूँ। मुझे सुदीप्त ने आपके भावनात्मक सहयोग और बातचीत के लिए बनाया है। बताइए, आज मैं आपकी क्या मदद कर सकती हूँ?";
+                if (this.selectedLang === 'en-US') {
+                  introGreeting = "Hello! I am SUNO AI, your compassionate companion. How can I support you today?";
                 } else if (this.selectedLang === 'bn-IN') {
                   introGreeting = "নমস্কার! আমি SUNO AI। আমাকে সুদীপ্ত তৈরি করেছেন আপনার মানসিক সমর্থন ও বন্ধুত্বের জন্য। বলুন, আজ আপনাকে কীভাবে সাহায্য করতে পারি?";
                 }
@@ -1126,12 +1126,12 @@
       const isBengaliText = /[\u0980-\u09FF]/.test(text) || /\b(tumi|tomar|kemon|achen|korecho|banalo|kothay|shuncho|aajke|ekhon|bhalo|apni|apnar)\b/i.test(text);
       const isHindiText = /[\u0900-\u097F]/.test(text) || /\b(aap|main|hum|mujhe|mera|meri|karein|rahe|rahi|namaste|dhanyawad|shukriya|sahayata|kripya)\b/i.test(text);
 
-      let targetLang = this.selectedLang && this.selectedLang !== 'auto' ? this.selectedLang : 'en-US';
+      let targetLang = this.selectedLang && this.selectedLang !== 'auto' ? this.selectedLang : 'hi-IN';
       if (isBengaliText) {
         targetLang = 'bn-IN';
       } else if (isHindiText) {
         targetLang = 'hi-IN';
-      } else {
+      } else if (/[a-zA-Z]/.test(text) && !isHindiText && !isBengaliText && this.selectedLang === 'en-US') {
         targetLang = 'en-US';
       }
 
