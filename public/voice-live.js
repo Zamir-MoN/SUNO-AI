@@ -423,7 +423,7 @@
 
       // 36 Ambient Orbiting Stardust Particles
       const particles = [];
-      const particleColors = ['#9FA1FF', '#B5BAFF', '#AEE2FF', '#D9F9DF'];
+      const particleColors = ['#7358FF', '#00D2FF', '#FF4DB8', '#00FF9D', '#AEE2FF'];
       for (let p = 0; p < 36; p++) {
         particles.push({
           angle: Math.random() * Math.PI * 2,
@@ -505,54 +505,54 @@
         ctx.restore();
 
         // -------------------------------------------------------------
-        // LAYER 2: Multi-Harmonic Undulating Circular Ribbons (High-Res Soft Curve)
+        // LAYER 2: Multi-Harmonic Undulating Circular Ribbons (Deepened & Enriched)
         // -------------------------------------------------------------
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
 
         const circularHarmonics = [
-          // 1. Periwinkle Base Harmonic (#9FA1FF)
+          // 1. Deep Royal Violet Harmonic (#7358FF)
           {
-            color: 'rgba(159, 161, 255, 0.75)',
-            glow: '#9FA1FF',
+            color: 'rgba(115, 88, 255, 0.90)',
+            glow: '#7358FF',
             radiusOffset: -5,
             freq: 3,
             speed: 0.8,
             amp: 11 * speechScale,
-            thick: 2.2,
+            thick: 2.4,
             phaseOffset: 0
           },
-          // 2. Soft Lavender Orbit (#B5BAFF)
+          // 2. Glowing Neon Magenta Orbit (#FF4DB8)
           {
-            color: 'rgba(181, 186, 255, 0.88)',
-            glow: '#B5BAFF',
+            color: 'rgba(255, 77, 184, 0.92)',
+            glow: '#FF4DB8',
             radiusOffset: 0,
             freq: 4,
             speed: -0.7,
             amp: 12 * speechScale,
-            thick: 2.0,
+            thick: 2.2,
             phaseOffset: 1.6
           },
-          // 3. Sky Blue Kinetic Ring (#AEE2FF)
+          // 3. Vibrant Neon Cyan Kinetic Ring (#00D2FF)
           {
-            color: 'rgba(174, 226, 255, 0.88)',
-            glow: '#AEE2FF',
+            color: 'rgba(0, 210, 255, 0.95)',
+            glow: '#00D2FF',
             radiusOffset: 4,
             freq: 5,
             speed: 0.9,
             amp: 13 * speechScale,
-            thick: 2.0,
+            thick: 2.4,
             phaseOffset: 3.2
           },
-          // 4. Mint Cream Wave (#D9F9DF)
+          // 4. Radiant Electric Mint Wave (#00FF9D)
           {
-            color: 'rgba(217, 249, 223, 0.95)',
-            glow: '#D9F9DF',
+            color: 'rgba(0, 255, 157, 0.96)',
+            glow: '#00FF9D',
             radiusOffset: -2,
             freq: 6,
             speed: -0.85,
             amp: 14 * speechScale,
-            thick: 2.4,
+            thick: 2.6,
             phaseOffset: 4.8
           }
         ];
@@ -586,14 +586,14 @@
           ctx.closePath();
 
           ctx.strokeStyle = harm.color;
-          ctx.lineWidth = Math.max(1.5, harm.thick * (0.8 + speechScale * 0.3));
+          ctx.lineWidth = Math.max(1.8, harm.thick * (0.8 + speechScale * 0.3));
           ctx.shadowColor = harm.glow;
-          ctx.shadowBlur = 10 * (0.8 + speechScale * 0.4);
+          ctx.shadowBlur = 14 * (0.8 + speechScale * 0.4);
           ctx.stroke();
         });
 
         // -------------------------------------------------------------
-        // LAYER 3: Incandescent Center Core Star & Spine (#D9F9DF)
+        // LAYER 3: Incandescent Center Core Spine (#00FFE0 & Pure White-Cyan Glow)
         // -------------------------------------------------------------
         ctx.beginPath();
         for (let i = 0; i <= numCircleSteps; i++) {
@@ -614,16 +614,17 @@
           else ctx.lineTo(x, y);
         }
         ctx.closePath();
-        ctx.strokeStyle = 'rgba(217, 249, 223, 0.98)';
-        ctx.lineWidth = 2.2 * (0.9 + speechScale * 0.3);
-        ctx.shadowColor = '#D9F9DF';
-        ctx.shadowBlur = 12 * (0.8 + speechScale * 0.4);
+        ctx.strokeStyle = 'rgba(235, 255, 255, 0.98)';
+        ctx.lineWidth = 2.4 * (0.9 + speechScale * 0.3);
+        ctx.shadowColor = '#00F5D4';
+        ctx.shadowBlur = 16 * (0.8 + speechScale * 0.4);
         ctx.stroke();
 
-        // Soft center radiant glow
+        // Deep rich center radiant glow
         const centerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseRadius * (0.85 + speechScale * 0.3));
-        centerGlow.addColorStop(0, 'rgba(181, 186, 255, 0.25)');
-        centerGlow.addColorStop(0.5, 'rgba(174, 226, 255, 0.12)');
+        centerGlow.addColorStop(0, 'rgba(115, 88, 255, 0.35)');
+        centerGlow.addColorStop(0.45, 'rgba(0, 210, 255, 0.20)');
+        centerGlow.addColorStop(0.8, 'rgba(0, 255, 157, 0.08)');
         centerGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = centerGlow;
         ctx.beginPath();
