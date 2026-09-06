@@ -1128,10 +1128,10 @@
       }
 
       const utterance = new SpeechSynthesisUtterance(text);
-      // Humanized prosody: slightly relaxed pacing and natural conversational pitch
-      utterance.rate = 0.94; 
+      // Soft, expressive Indian female prosody
+      utterance.rate = 0.95; 
       utterance.volume = 1.0;
-      utterance.pitch = 1.0; // Natural organic human baseline pitch (eliminates synthetic electronic resonance)
+      utterance.pitch = 1.08; // Sweet, gentle female vocal pitch
 
       // Auto-detect language strictly: Bengali (বাংলা), Hindi (हिन्दी), or English
       const isBengaliText = /[\u0980-\u09FF]/.test(text) || /\b(tumi|tomar|kemon|achen|korecho|banalo|kothay|shuncho|aajke|ekhon|bhalo|apni|apnar)\b/i.test(text);
@@ -1152,24 +1152,22 @@
       try {
         const voices = window.speechSynthesis.getVoices() || [];
         if (voices.length > 0) {
-          // Priority 1: High-fidelity natural female Bengali voice
-          if (targetLang.startsWith('bn')) {
-            matchedVoice = voices.find(v => 
-              (v.lang && v.lang.toLowerCase().startsWith('bn')) && 
-              /female|mithu|tapan|bashkar|shohor|girl|natural|online/i.test(v.name)
-            ) || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('bn') && !/male/i.test(v.name))
-              || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('bn'))
-              || voices.find(v => /bengali|bangla/i.test(v.name));
-          }
-
-          // Priority 2: High-fidelity natural female Hindi voice (Kalpana, Swara, Heera, Google हिन्दी)
-          else if (targetLang.startsWith('hi')) {
-            matchedVoice = voices.find(v => 
-              (v.lang && v.lang.toLowerCase().startsWith('hi')) && 
-              /female|kalpana|swara|heera|ananya|priya|natural|google|online/i.test(v.name)
-            ) || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('hi') && !/male|hemant|madhur/i.test(v.name))
+          // Priority 1: High-fidelity natural female Hindi voice (Google हिन्दी, Kalpana, Swara, Heera, Ananya)
+          if (targetLang.startsWith('hi')) {
+            matchedVoice = 
+              voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('hi')) && /google.*(female|हिंदी|हिन्दी)|kalpana|swara|heera|ananya|priya|neerja|female/i.test(v.name))
+              || voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('hi')) && !/male|hemant|madhur|guy|david/i.test(v.name))
               || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('hi'))
               || voices.find(v => /hindi|kalpana|swara/i.test(v.name));
+          }
+
+          // Priority 2: High-fidelity natural female Bengali voice
+          else if (targetLang.startsWith('bn')) {
+            matchedVoice = 
+              voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('bn')) && /female|mithu|tapan|bashkar|shohor|girl|natural/i.test(v.name))
+              || voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('bn')) && !/male/i.test(v.name))
+              || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('bn'))
+              || voices.find(v => /bengali|bangla/i.test(v.name));
           }
 
           // Priority 3: High-fidelity natural female English voice (Neural Aria, Jenny, Ava, Samantha)
@@ -1184,10 +1182,16 @@
 
           if (matchedVoice) {
             utterance.voice = matchedVoice;
-            console.log(`[VoiceAssistant TTS] Natural female voice selected: "${matchedVoice.name}" (${matchedVoice.lang})`);
+            console.log(`[VoiceAssistant TTS] Natural Indian female voice active: "${matchedVoice.name}" (${matchedVoice.lang})`);
           }
         }
       } catch (e) {}
+
+      // If a native female system voice exists on the user's device, use it directly for instant, expressive female speech
+      if (matchedVoice) {
+        this._playUtteranceFallback(utterance);
+        return;
+      }
 
       // PRIORITY 1: For Hindi (hi-IN) & Bengali (bn-IN), stream authentic Indian neural audio
       if (isBengaliText || isHindiText || targetLang.startsWith('hi') || targetLang.startsWith('bn')) {
