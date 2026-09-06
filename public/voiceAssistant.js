@@ -1127,11 +1127,15 @@
         return;
       }
 
+      // Cancel any stuck previous utterances for clean playback
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
+
       const utterance = new SpeechSynthesisUtterance(text);
-      // Soft, expressive Indian female prosody
       utterance.rate = 0.95; 
       utterance.volume = 1.0;
-      utterance.pitch = 1.08; // Sweet, gentle female vocal pitch
+      utterance.pitch = 1.08; // Consistent gentle female pitch
 
       // Auto-detect language strictly: Bengali (বাংলা), Hindi (हिन्दी), or English
       const isBengaliText = /[\u0980-\u09FF]/.test(text) || /\b(tumi|tomar|kemon|achen|korecho|banalo|kothay|shuncho|aajke|ekhon|bhalo|apni|apnar)\b/i.test(text);
@@ -1148,30 +1152,24 @@
 
       utterance.lang = targetLang;
 
+      // Select consistent voice
       let matchedVoice = null;
       try {
         const voices = window.speechSynthesis.getVoices() || [];
         if (voices.length > 0) {
-          // Priority 1: High-fidelity natural female Hindi voice (Google हिन्दी, Kalpana, Swara, Heera, Ananya)
           if (targetLang.startsWith('hi')) {
             matchedVoice = 
               voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('hi')) && /google.*(female|हिंदी|हिन्दी)|kalpana|swara|heera|ananya|priya|neerja|female/i.test(v.name))
               || voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('hi')) && !/male|hemant|madhur|guy|david/i.test(v.name))
               || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('hi'))
               || voices.find(v => /hindi|kalpana|swara/i.test(v.name));
-          }
-
-          // Priority 2: High-fidelity natural female Bengali voice
-          else if (targetLang.startsWith('bn')) {
+          } else if (targetLang.startsWith('bn')) {
             matchedVoice = 
               voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('bn')) && /female|mithu|tapan|bashkar|shohor|girl|natural/i.test(v.name))
               || voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('bn')) && !/male/i.test(v.name))
               || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('bn'))
               || voices.find(v => /bengali|bangla/i.test(v.name));
-          }
-
-          // Priority 3: High-fidelity natural female English voice (Neural Aria, Jenny, Ava, Samantha)
-          else {
+          } else {
             matchedVoice = 
               voices.find(v => v.lang && v.lang.startsWith('en') && /(aria|jenny|ava|emma|sonia|michelle|ana|clara|libby|maia|natasha|neerja)/i.test(v.name) && !/male|david|george|mark|guy|ryan/i.test(v.name))
               || voices.find(v => v.lang && v.lang.startsWith('en') && /(samantha|victoria|karen|susan|kathy|serena|stephanie|moira|fiona|tessa|veena)/i.test(v.name) && !/male|david|george|mark/i.test(v.name))
@@ -1182,79 +1180,9 @@
 
           if (matchedVoice) {
             utterance.voice = matchedVoice;
-            console.log(`[VoiceAssistant TTS] Natural Indian female voice active: "${matchedVoice.name}" (${matchedVoice.lang})`);
           }
         }
       } catch (e) {}
-
-      // If a native female system voice exists on the user's device, use it directly for instant, expressive female speech
-      if (matchedVoice) {
-        this._playUtteranceFallback(utterance);
-        return;
-      }
-
-      // PRIORITY 1: For Hindi (hi-IN) & Bengali (bn-IN), stream authentic Indian neural audio
-      if (isBengaliText || isHindiText || targetLang.startsWith('hi') || targetLang.startsWith('bn')) {
-        const ttsLang = (isBengaliText || targetLang.startsWith('bn')) ? 'bn-IN' : 'hi-IN';
-        console.log(`[VoiceAssistant TTS] Streaming Indian audio for ${ttsLang}`);
-        try {
-          const encoded = encodeURIComponent(text.substring(0, 300));
-          const audioUrl = `/api/tts?lang=${ttsLang}&text=${encoded}`;
-          this._initAudioOutput();
-          const audio = new Audio(audioUrl);
-          audio.crossOrigin = 'anonymous';
-
-          try {
-            if (this.outputAudioContext && this.outputAnalyser) {
-              const audioSrc = this.outputAudioContext.createMediaElementSource(audio);
-              audioSrc.connect(this.outputAnalyser);
-            }
-          } catch (audioSrcErr) {
-            console.warn('[Audio Analyser Connect]:', audioSrcErr);
-          }
-          
-          let audioEnded = false;
-          let audioWatchdog = setTimeout(() => {
-            if (!audioEnded) {
-              audioEnded = true;
-              console.warn('[Audio Stream Watchdog]: Audio ended via safety timeout.');
-              this.currentAudioElement = null;
-              this._playNextFallbackTTS();
-            }
-          }, 8000);
-
-          audio.onended = () => {
-            if (audioEnded) return;
-            audioEnded = true;
-            clearTimeout(audioWatchdog);
-            this.currentAudioElement = null;
-            this._playNextFallbackTTS();
-          };
-          audio.onerror = (e) => {
-            if (audioEnded) return;
-            audioEnded = true;
-            clearTimeout(audioWatchdog);
-            console.warn('[Audio Stream Error]: Falling back to standard utterance.', e);
-            this.currentAudioElement = null;
-            this._playUtteranceFallback(utterance);
-          };
-          
-          this.currentAudioElement = audio;
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch(e => {
-              if (audioEnded) return;
-              audioEnded = true;
-              clearTimeout(audioWatchdog);
-              console.warn('[Audio Play Error]:', e);
-              this._playUtteranceFallback(utterance);
-            });
-          }
-          return;
-        } catch (err) {
-          console.warn('[Audio Stream Error]:', err);
-        }
-      }
 
       this._playUtteranceFallback(utterance);
     }
