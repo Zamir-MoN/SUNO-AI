@@ -1185,10 +1185,11 @@ CORE PERSONALITY & EMOTIONAL TRAINING:
   });
 });
 
-server.listen(PORT, () => {
+const HOST = '0.0.0.0';
+server.listen(PORT, HOST, () => {
   console.log(`====================================================`);
   console.log(`🚀 AETHERIA REAL-TIME LIVE VOICE ASSISTANT RUNNING!`);
-  console.log(`👉 Access URL: http://localhost:${PORT}`);
+  console.log(`👉 Access URL: http://${HOST}:${PORT}`);
   console.log(`✨ Full-Screen Live Voice + Neural Orb + WebSocket Active`);
   console.log(`====================================================`);
 });
