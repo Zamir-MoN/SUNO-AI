@@ -164,6 +164,78 @@
       .aura-legal-sub {
         display: none !important;
       }
+
+      /* Mobile Live Voice Assistant Stage & Dock */
+      .live-voice-screen {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        border-radius: 0 !important;
+        z-index: 99999 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+      }
+      .live-voice-topbar.modern-topbar {
+        padding: 10px 12px !important;
+        height: 52px !important;
+      }
+      .voice-brand-pill {
+        padding: 4px 10px !important;
+        font-size: 12px !important;
+      }
+      .voice-top-icon-btn {
+        width: 36px !important;
+        height: 36px !important;
+      }
+      .live-dropdown-pill {
+        padding: 6px 10px !important;
+        font-size: 12px !important;
+      }
+      .voice-wave-ribbon-wrapper {
+        width: 240px !important;
+        height: 240px !important;
+        margin: 0 auto 6px auto !important;
+      }
+      #liveVoiceWaveCanvas {
+        width: 240px !important;
+        height: 240px !important;
+      }
+      .floating-dialogue-lower.modern-dialogue-feed {
+        padding: 0 14px !important;
+        min-height: 60px !important;
+        margin: 6px 0 12px 0 !important;
+      }
+      .live-transcript-user {
+        font-size: 13.5px !important;
+      }
+      .live-transcript-ai {
+        font-size: 15.5px !important;
+        line-height: 1.45 !important;
+      }
+      .live-voice-dock.modern-voice-dock {
+        padding: 8px 12px calc(12px + env(safe-area-inset-bottom, 8px)) 12px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      .modern-dock-unified-bar {
+        gap: 8px !important;
+        width: 100% !important;
+      }
+      .dock-type-container {
+        padding: 4px 10px 4px 12px !important;
+        border-radius: 24px !important;
+        gap: 6px !important;
+      }
+      .dock-text-input {
+        font-size: 13px !important;
+      }
+      .voice-side-btn.modern-action-btn,
+      .voice-iridescent-mic-btn.modern-mic-btn {
+        width: 40px !important;
+        height: 40px !important;
+      }
     }
   </style>
 </head>
