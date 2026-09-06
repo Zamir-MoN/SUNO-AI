@@ -1166,18 +1166,18 @@
       try {
         const voices = window.speechSynthesis.getVoices() || [];
         if (voices.length > 0) {
-          if (targetLang.startsWith('hi')) {
-            matchedVoice = 
-              voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('hi')) && /google.*(female|हिंदी|हिन्दी)|kalpana|swara|heera|ananya|priya|neerja|female/i.test(v.name))
-              || voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('hi')) && !/male|hemant|madhur|guy|david/i.test(v.name))
-              || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('hi'))
-              || voices.find(v => /hindi|kalpana|swara/i.test(v.name));
-          } else if (targetLang.startsWith('bn')) {
+          if (targetLang.startsWith('bn') || isBengaliText) {
             matchedVoice = 
               voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('bn')) && /female|mithu|tapan|bashkar|shohor|girl|natural/i.test(v.name))
               || voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('bn')) && !/male/i.test(v.name))
               || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('bn'))
               || voices.find(v => /bengali|bangla/i.test(v.name));
+          } else if (targetLang.startsWith('hi') || isHindiText) {
+            matchedVoice = 
+              voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('hi')) && /google.*(female|हिंदी|हिन्दी)|kalpana|swara|heera|ananya|priya|neerja|female/i.test(v.name))
+              || voices.find(v => (v.lang && v.lang.toLowerCase().startsWith('hi')) && !/male|hemant|madhur|guy|david/i.test(v.name))
+              || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('hi'))
+              || voices.find(v => /hindi|kalpana|swara/i.test(v.name));
           } else {
             matchedVoice = 
               voices.find(v => v.lang && v.lang.startsWith('en') && /(aria|jenny|ava|emma|sonia|michelle|ana|clara|libby|maia|natasha|neerja)/i.test(v.name) && !/male|david|george|mark|guy|ryan/i.test(v.name))
@@ -1192,6 +1192,58 @@
           }
         }
       } catch (e) {}
+
+      // If text is Bengali or Hindi and no native browser voice exists on this device/OS,
+      // seamlessly stream crystal-clear audio through our backend proxy!
+      if (!matchedVoice && (isBengaliText || targetLang.startsWith('bn') || isHindiText || targetLang.startsWith('hi'))) {
+        const ttsLang = (isBengaliText || targetLang.startsWith('bn')) ? 'bn-IN' : 'hi-IN';
+        console.log(`[VoiceAssistant TTS] Device has no native ${ttsLang} voice. Streaming via backend proxy.`);
+        try {
+          const encoded = encodeURIComponent(text.substring(0, 300));
+          const audioUrl = `/api/tts?lang=${ttsLang}&text=${encoded}`;
+          this._initAudioOutput();
+          const audio = new Audio(audioUrl);
+          audio.crossOrigin = 'anonymous';
+
+          try {
+            if (this.outputAudioContext && this.outputAnalyser) {
+              const audioSrc = this.outputAudioContext.createMediaElementSource(audio);
+              audioSrc.connect(this.outputAnalyser);
+            }
+          } catch (audioSrcErr) {}
+
+          let audioEnded = false;
+          const onDone = () => {
+            if (audioEnded) return;
+            audioEnded = true;
+            this.currentAudioElement = null;
+            this._playNextFallbackTTS();
+          };
+
+          audio.onended = onDone;
+          audio.onerror = () => {
+            console.warn('[Audio Stream Error]: Falling back to standard utterance.');
+            this._playUtteranceFallback(utterance);
+          };
+
+          setTimeout(() => {
+            if (!audioEnded && this.currentAudioElement === audio) {
+              onDone();
+            }
+          }, 9000);
+
+          this.currentAudioElement = audio;
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(() => {
+              this._playUtteranceFallback(utterance);
+            });
+          }
+          return;
+        } catch (err) {
+          console.warn('[Audio Stream Exception]:', err);
+        }
+      }
 
       this._playUtteranceFallback(utterance);
     }
