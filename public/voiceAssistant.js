@@ -683,6 +683,8 @@
               // Only enqueue if not already queued via response.audio_chunk
               if (msg.text && this.fallbackSpeechQueue.length === 0 && !this.isFallbackPlaying) {
                 this._enqueueFallbackTTSChunk(msg.text);
+              } else if (!this.isFallbackPlaying && this.fallbackSpeechQueue.length === 0) {
+                this._setState(VoiceState.LISTENING);
               }
               break;
 
@@ -1093,7 +1095,7 @@
     _playNextFallbackTTS() {
       if (this.fallbackSpeechQueue.length === 0) {
         this.isFallbackPlaying = false;
-        if (this.state === VoiceState.AI_SPEAKING && !this.isMuted) {
+        if ((this.state === VoiceState.AI_SPEAKING || this.state === VoiceState.THINKING) && !this.isMuted) {
           this._setState(VoiceState.LISTENING);
         }
         if (this._ttsKeepAliveTimer) {
@@ -1208,11 +1210,27 @@
             console.warn('[Audio Analyser Connect]:', audioSrcErr);
           }
           
+          let audioEnded = false;
+          let audioWatchdog = setTimeout(() => {
+            if (!audioEnded) {
+              audioEnded = true;
+              console.warn('[Audio Stream Watchdog]: Audio ended via safety timeout.');
+              this.currentAudioElement = null;
+              this._playNextFallbackTTS();
+            }
+          }, 8000);
+
           audio.onended = () => {
+            if (audioEnded) return;
+            audioEnded = true;
+            clearTimeout(audioWatchdog);
             this.currentAudioElement = null;
             this._playNextFallbackTTS();
           };
           audio.onerror = (e) => {
+            if (audioEnded) return;
+            audioEnded = true;
+            clearTimeout(audioWatchdog);
             console.warn('[Audio Stream Error]: Falling back to standard utterance.', e);
             this.currentAudioElement = null;
             this._playUtteranceFallback(utterance);
@@ -1222,6 +1240,9 @@
           const playPromise = audio.play();
           if (playPromise !== undefined) {
             playPromise.catch(e => {
+              if (audioEnded) return;
+              audioEnded = true;
+              clearTimeout(audioWatchdog);
               console.warn('[Audio Play Error]:', e);
               this._playUtteranceFallback(utterance);
             });
