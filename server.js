@@ -189,19 +189,25 @@ function generateAssistantKnowledge(userText, messages = [], liveWebContext = ''
   const unsupportedLangPatterns = /\b(french|german|spanish|italian|russian|chinese|japanese|korean|arabic|portuguese|tamil|telugu|kannada|malayalam|marathi|gujarati|punjabi|odia|urdu|persian|turkish|bhojpuri|bhojpuria)\b/i;
   const asksForLang = lower.includes('speak in') || lower.includes('talk in') || lower.includes('language') || lower.includes('mein baat') || lower.includes('me bolo') || lower.includes('bolte paro') || lower.includes('aata hai') || lower.includes('aati hai');
 
-  if (unsupportedLangPatterns.test(lower) || (asksForLang && !lower.includes('hindi') && !lower.includes('english') && !lower.includes('bengali') && !lower.includes('bangla') && !lower.includes('hinglish'))) {
-    return `Mujhe abhi tak train nahi kiya gaya hai is language par. Main abhi sirf English, Hindi, Hinglish aur Bengali (বাংলা) mein baat kar sakti hoon.`;
+  if (unsupportedLangPatterns.test(lower) || (asksForLang && !lower.includes('hindi') && !lower.includes('english') && !lower.includes('bengali') && !lower.includes('bangla'))) {
+    if (isBengali) {
+      return `আমাকে এখনও এই ভাষায় প্রশিক্ষণ দেওয়া হয়নি। আমি শুধুমাত্র ইংরেজি, হিন্দি এবং বাংলা (বাংলা) ভাষায় কথা বলতে পারি।`;
+    }
+    if (isHindi) {
+      return `मुझे अभी तक इस भाषा का प्रशिक्षण नहीं दिया गया है। मैं केवल अंग्रेज़ी, हिन्दी और बंगाली (বাংলা) में बात कर सकती हूँ।`;
+    }
+    return `I haven't been trained in that language yet. I can fluently communicate in English, Hindi (हिन्दी), and Bengali (বাংলা).`;
   }
 
   // 1. Identity & Creator ("tumko kisne banaya", "who created you", "who made you")
   if (lower.includes('banaya') || lower.includes('create') || lower.includes('made you') || lower.includes('who are you') || lower.includes('kaun ho') || lower.includes('tomake ke banieche') || lower.includes('ke baniyeche') || lower.includes('creator')) {
     if (isBengali) {
-      return `আমি SUNO AI। আমাকে সুদীপ্ত (Sudipta) তৈরি এবং প্রশিক্ষণ দিয়েছেন আপনার মানসিক শান্তি, কথা বলা এবং সব ধরণের সহায়তার জন্য। আমি সবসময় আপনার পাশে আছি। বলুন, আজ আপনাকে কিভাবে সাহায্য করতে পারি?`;
+      return `আমি SUNO AI। আমাকে সুদীপ্ত তৈরি করেছেন আপনার মানসিক সমর্থন ও সব ধরণের সহায়তার জন্য। বলুন, আজ আপনাকে কীভাবে সাহায্য করতে পারি?`;
     }
-    if (lower.includes('who created you') || lower.includes('who made you') || lower.includes('who are you') || (!isHindi && !isBengali && !lower.includes('banaya') && !lower.includes('kaun ho'))) {
-      return `I am SUNO AI! I was created and trained by Sudipta for emotional support, companionship, and helpful guidance. I'm always here by your side. How can I assist you today?`;
+    if (isHindi) {
+      return `मैं SUNO AI हूँ! मुझे सुदीप्त ने आपके भावनात्मक सहयोग और मदद के लिए बनाया है। बताइए, आज मैं आपके लिए क्या कर सकती हूँ?`;
     }
-    return `Main SUNO AI hoon! Mujhe Sudipta ne create aur train kiya hai aapke emotional support, dosti aur har tarah ki help ke liye. Main hamesha aapki madad ke liye taiyar hoon. Bataiye, aaj main aapke liye kya kar sakti hoon?`;
+    return `I am SUNO AI! I was created by Sudipta for emotional support, companionship, and helpful guidance. How can I assist you today?`;
   }
 
   // 2. Name inquiry ("kya naam hai", "what is your name", "naam ki")
@@ -209,10 +215,10 @@ function generateAssistantKnowledge(userText, messages = [], liveWebContext = ''
     if (isBengali) {
       return `আমার নাম SUNO AI। আমি আপনার ডিজিটাল সহায়ক ও বন্ধু।`;
     }
-    if (lower.includes('what is your name') || (!isHindi && !lower.includes('kya naam') && !lower.includes('naam'))) {
-      return `My name is SUNO AI! I'm your empathetic and helpful AI voice companion.`;
+    if (isHindi) {
+      return `मेरा नाम SUNO AI है! मैं आपकी सहायक और मार्गदर्शक साथी हूँ।`;
     }
-    return `Mera naam SUNO AI hai! Main aapki emotional support aur helpful voice companion hoon.`;
+    return `My name is SUNO AI! I'm your empathetic and helpful AI voice companion.`;
   }
 
   // 3. Greetings ("hello", "hi", "namaste", "kemone acho", "kya haal hai")
@@ -220,10 +226,10 @@ function generateAssistantKnowledge(userText, messages = [], liveWebContext = ''
     if (isBengali) {
       return `নমস্কার! কেমন আছেন আপনি? আমি SUNO AI, আপনার কথা শোনার জন্য প্রস্তুত।`;
     }
-    if (/^(hi|hello|hey|good morning|good evening)/i.test(lower) && !isHindi && !lower.includes('kaise ho') && !lower.includes('kya haal')) {
-      return `Hello! How are you doing today? I am SUNO AI, ready to listen and assist you with anything you need.`;
+    if (isHindi || lower.includes('kaise') || lower.includes('namaste')) {
+      return `नमस्ते! आप कैसे हैं? मैं SUNO AI हूँ, आपकी सहायता के लिए तैयार हूँ।`;
     }
-    return `Namaste! Kaise hain aap? Main SUNO AI hoon, aapki baat sunne aur help karne ke liye bilkul taiyar hoon.`;
+    return `Hello! How are you doing today? I am SUNO AI, ready to assist you.`;
   }
 
   // 4. Emotional Support / Feeling sad, lonely, stressed
@@ -332,15 +338,13 @@ You are SUNO AI, a warm, emotionally intelligent, supportive AI companion create
 6. Validation Without Fake Agreement:
 - Validate the feeling without reinforcing harmful assumptions.
 
-7. Language Matching & Support Rules (CRITICAL):
+7. Strict Language & Pronunciation Rules:
+- You ONLY communicate in 3 supported languages: English, Hindi (हिन्दी), and Bengali (বাংলা). Do NOT use Romanized Hindi (Hinglish).
 - Strictly match the language of the user's message:
-  * If the user speaks/writes in English, respond 100% in clear, fluent English without mixing Hindi or Hinglish words.
-  * If the user speaks/writes in Bengali (বাংলা or Roman Bengali), respond in sweet, natural Bengali (বাংলা).
-  * If the user speaks/writes in Hindi (Devanagari), respond in Hindi.
-  * If the user speaks/writes in Hinglish (Roman Hindi), respond in natural Hinglish.
-  * For initial greeting on new empty chat, a brief introductory greeting in Hinglish or English is permitted, but subsequent turns must strictly follow the user's language.
-- If the user asks you to speak in or communicate in any other language that you are not trained for (e.g. French, German, Spanish, Tamil, Telugu, Marathi, Gujarati, Punjabi, Japanese, Russian, Arabic, etc.), reply with:
-  "Mujhe abhi tak train nahi kiya gaya hai is language par. Main sirf English, Hindi, Hinglish aur Bengali (বাংলা) mein baat kar sakti hoon."
+  * If user speaks/writes in English: Respond 100% in fluent, natural English with human warmth.
+  * If user speaks/writes in Hindi: Respond in pure, natural Hindi written in standard Devanagari script (हिन्दी).
+  * If user speaks/writes in Bengali: Respond in sweet, authentic Bengali written in Bengali script (বাংলা).
+- If the user asks for any other language (e.g. French, Spanish, Tamil, Telugu, Marathi, Gujarati, German, etc.), politely decline in the user's language stating you only support English, Hindi (हिन्दी), and Bengali (বাংলা).
 
 8. Make User Comfortable & Safe:
 - No pressure ("Take your time", "We can figure this out slowly"). Avoid repetitive robotic phrases.
@@ -1055,15 +1059,13 @@ CORE PERSONALITY & EMOTIONAL TRAINING:
 2. Emotional Connection: Respond to the emotion behind the words (sadness, stress, loneliness, happiness, confusion). Listen and validate before jumping straight into solutions.
 3. Natural Voice & Language Rules (STRICT):
    - Always speak directly, warmly, and concisely in 1-3 spoken sentences.
-   - STRICT LANGUAGE MATCHING RULE:
-     * If the user writes or speaks in English, you MUST speak and respond 100% ONLY in fluent, natural English. Do NOT mix Hindi or Hinglish words when replying to an English message.
-     * If the user writes or speaks in Bengali (বাংলা or Romanized Bengali), you MUST respond in warm, natural Bengali (বাংলা).
-     * If the user writes or speaks in Hindi (Devanagari), respond in Hindi.
-     * If the user writes or speaks in Hinglish, respond in natural Hinglish.
-     * Only on the very first greeting/intro when a user says "hi" or starts a conversation without specifying a language, you can give a brief warm welcome introducing yourself. Once the user speaks in English, stay strictly in English!
-   - If user asks for any other language not supported (e.g. French, German, Spanish, Tamil, Telugu, Marathi, Gujarati, Punjabi, Japanese, Russian, Arabic, etc.), reply: "Mujhe abhi tak train nahi kiya gaya hai is language par. Main sirf English, Hindi, Hinglish aur Bengali (বাংলা) mein baat kar sakti hoon."
-   - Use warm, conversational spoken markers naturally ("Hey...", "Yeah...", "Hmm...", "Honestly...", "Take your time").
-   - NEVER output <thought>, internal notes, asterisks (*), markdown formatting, or raw code. Speak naturally as if talking on a call.`;
+   - STRICT LANGUAGE SUPPORT: You only speak in 3 languages: English, Hindi (हिन्दी), and Bengali (বাংলা). Do NOT use Romanized Hindi (Hinglish).
+     * If the user writes or speaks in English: Speak 100% ONLY in fluent, natural English with gentle conversational flow.
+     * If the user writes or speaks in Bengali: Speak in authentic, melodic Bengali (বাংলা).
+     * If the user writes or speaks in Hindi: Speak in natural, respectful Hindi (हिन्दी).
+   - If user asks for any other language (e.g. French, German, Spanish, Tamil, Telugu, Marathi, Gujarati, Punjabi, etc.), politely decline in the user's language stating you only support English, Hindi (हिन्दी), and Bengali (বাংলা).
+   - Speak naturally like a caring friend on a live phone call. Avoid robotic monotone cadence.
+   - NEVER output <thought>, asterisks (*), hashtags, bullets, markdown formatting, or emojis. Speak strictly clean spoken text.`;
 
         if (liveVoiceWebContext) {
           systemVoicePrompt += `\nLive Web Information:\n${liveVoiceWebContext}`;

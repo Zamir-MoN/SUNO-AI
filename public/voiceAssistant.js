@@ -611,11 +611,16 @@
               this._initFallbackSpeechRecognition();
               this._setState(VoiceState.LISTENING);
 
-              // If brand new empty chat session, speak the introductory greeting once
+              // If brand new empty chat session, speak a clean, natural intro greeting
               const currentHistory = config.history || [];
               if (!this._hasSpokenIntro && currentHistory.length === 0) {
                 this._hasSpokenIntro = true;
-                const introGreeting = "Main SUNO AI hoon! Mujhe Sudipta ne create aur train kiya hai aapke emotional support, dosti aur har tarah ki help ke liye. Bataiye, aaj main aapke liye kya kar sakti hoon?";
+                let introGreeting = "Hello! I am SUNO AI, your compassionate companion. How can I support you today?";
+                if (this.selectedLang === 'hi-IN') {
+                  introGreeting = "नमस्ते! मैं SUNO AI हूँ। मुझे सुदीप्त ने आपके भावनात्मक सहयोग और बातचीत के लिए बनाया है। बताइए, आज मैं आपकी क्या मदद कर सकती हूँ?";
+                } else if (this.selectedLang === 'bn-IN') {
+                  introGreeting = "নমস্কার! আমি SUNO AI। আমাকে সুদীপ্ত তৈরি করেছেন আপনার মানসিক সমর্থন ও বন্ধুত্বের জন্য। বলুন, আজ আপনাকে কীভাবে সাহায্য করতে পারি?";
+                }
                 this._emitTranscript('assistant', introGreeting, true);
                 this._enqueueFallbackTTSChunk(introGreeting);
               }
@@ -1113,15 +1118,13 @@
       }
 
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.0;
+      utterance.rate = 0.96; // Smooth, relaxed natural human speech cadence
       utterance.volume = 1.0;
-      utterance.pitch = 1.1; // Gentle, natural warm female pitch
+      utterance.pitch = 1.02; // Warm, natural human female pitch (not high-pitched or robotic)
 
-      // Auto-detect script in response (Bengali, Devanagari/Hindi, Hinglish, English)
-      const isBengaliText = /[\u0980-\u09FF]/.test(text) || /\b(tumi|tomar|kemon|achen|korecho|banalo|kothay|shuncho|aajke|ekhon|bhalo)\b/i.test(text);
-      const isDevanagari = /[\u0900-\u097F]/.test(text);
-      const isHinglish = /\b(main|hoon|mujhe|kiya|gaya|hai|hain|tumhare|saath|hamesha|banaya|suno|kaisa|kaise|karo|rahe|rahi|aaj|accha|theek|batao)\b/i.test(text);
-      const isHindiText = isDevanagari || isHinglish;
+      // Auto-detect language strictly: Bengali (বাংলা), Hindi (हिन्दी), or English
+      const isBengaliText = /[\u0980-\u09FF]/.test(text) || /\b(tumi|tomar|kemon|achen|korecho|banalo|kothay|shuncho|aajke|ekhon|bhalo|apni|apnar)\b/i.test(text);
+      const isHindiText = /[\u0900-\u097F]/.test(text) || /\b(aap|main|hum|mujhe|mera|meri|karein|rahe|rahi|namaste|dhanyawad|shukriya|sahayata|kripya)\b/i.test(text);
 
       let targetLang = this.selectedLang && this.selectedLang !== 'auto' ? this.selectedLang : 'en-US';
       if (isBengaliText) {
@@ -1133,43 +1136,38 @@
       }
 
       utterance.lang = targetLang;
-      const langPrefix = targetLang.split('-')[0].toLowerCase();
 
       let matchedVoice = null;
       try {
         const voices = window.speechSynthesis.getVoices() || [];
         if (voices.length > 0) {
-          // Priority 1: Natural Female Bengali voice (Mithu, Swara, Bangla, Female)
+          // Priority 1: High-fidelity natural female Bengali voice
           if (targetLang.startsWith('bn')) {
             matchedVoice = voices.find(v => 
               (v.lang && v.lang.toLowerCase().startsWith('bn')) && 
-              /female|mithu|tapan|bashkar|shohor|girl|natural/i.test(v.name)
-            ) || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('bn'))
+              /female|mithu|tapan|bashkar|shohor|girl|natural|online/i.test(v.name)
+            ) || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('bn') && !/male/i.test(v.name))
+              || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('bn'))
               || voices.find(v => /bengali|bangla/i.test(v.name));
           }
 
-          // Priority 2: Natural Female Hindi voice (Kalpana, Swara, Heera, Female)
+          // Priority 2: High-fidelity natural female Hindi voice (Kalpana, Swara, Heera, Google हिन्दी)
           else if (targetLang.startsWith('hi')) {
             matchedVoice = voices.find(v => 
               (v.lang && v.lang.toLowerCase().startsWith('hi')) && 
-              /female|kalpana|swara|heera|ananya|priya|natural|google/i.test(v.name)
+              /female|kalpana|swara|heera|ananya|priya|natural|google|online/i.test(v.name)
             ) || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('hi') && !/male|hemant|madhur/i.test(v.name))
               || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('hi'))
               || voices.find(v => /hindi|kalpana|swara/i.test(v.name));
           }
 
-          // Priority 3: Natural Female English voice ranking (Aria, Jenny, Ava, Emma, Samantha, Sonia, Stephanie, Google US/UK Female, Microsoft Zira)
+          // Priority 3: High-fidelity natural female English voice (Neural Aria, Jenny, Ava, Samantha)
           else {
             matchedVoice = 
-              // Top Tier 1: Microsoft Neural Natural Female (Aria, Jenny, Ava, Emma, Sonia)
               voices.find(v => v.lang && v.lang.startsWith('en') && /(aria|jenny|ava|emma|sonia|michelle|ana|clara|libby|maia|natasha|neerja)/i.test(v.name) && !/male|david|george|mark|guy|ryan/i.test(v.name))
-              // Top Tier 2: Apple / Google High Quality Female voices (Samantha, Victoria, Google US English Female, Google UK English Female)
               || voices.find(v => v.lang && v.lang.startsWith('en') && /(samantha|victoria|karen|susan|kathy|serena|stephanie|moira|fiona|tessa|veena)/i.test(v.name) && !/male|david|george|mark/i.test(v.name))
-              // Top Tier 3: Any voice labeled "Female" or "Natural" in English
               || voices.find(v => v.lang && v.lang.startsWith('en') && /female|natural/i.test(v.name) && !/male|david|george|mark|guy/i.test(v.name))
-              // Top Tier 4: Microsoft Zira or Google English (clean female)
               || voices.find(v => v.lang && v.lang.startsWith('en') && /zira|google/i.test(v.name) && !/male|david|george|mark|guy|ryan/i.test(v.name))
-              // Top Tier 5: Fallback to non-male English voice
               || voices.find(v => v.lang && v.lang.startsWith('en') && !/male|david|george|mark|guy|ryan|richard|james|ravi/i.test(v.name));
           }
 

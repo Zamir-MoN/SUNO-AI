@@ -355,15 +355,15 @@
       const str = text.trim();
       let detectedLang = null;
 
-      // 1. Bengali detection (Bengali script or key phonetic words)
-      if (/[\u0980-\u09FF]/.test(str) || /\b(kemon|acho|achen|tumi|tomar|apni|apnar|bhalo|kothay|ki|korcho|bolchi|shuncho|aajke|ekhon|bangla)\b/i.test(str)) {
+      // 1. Bengali detection (Bengali script or key Bengali words)
+      if (/[\u0980-\u09FF]/.test(str) || /\b(kemon|acho|achen|tumi|tomar|apni|apnar|bhalo|kothay|ki|korcho|bolchi|shuncho|aajke|ekhon|bangla|khobor)\b/i.test(str)) {
         detectedLang = 'bn-IN';
       }
-      // 2. Hindi / Hinglish detection (Devanagari script or distinct Hinglish words)
-      else if (/[\u0900-\u097F]/.test(str) || /\b(kaise|kaisa|batao|tumhara|mujhe|mera|meri|karo|rahe|rahi|nahi|haan|kaun|kab|kyun|kahan|suno|accha|theek|baat|kuch|bataiye|samjha|samjhao)\b/i.test(str)) {
+      // 2. Pure Hindi detection (Devanagari script or pure Hindi words)
+      else if (/[\u0900-\u097F]/.test(str) || /\b(namaste|kaise|kaisa|batao|aap|aapka|aapki|mera|meri|kijiye|dhanyawad|shukriya|madad|sahayata|kripya)\b/i.test(str)) {
         detectedLang = 'hi-IN';
       }
-      // 3. English detection (Default for standard English phrases and Latin characters)
+      // 3. English detection (Default for English words and standard Latin characters)
       else if (/[a-zA-Z]/.test(str)) {
         detectedLang = 'en-US';
       }
