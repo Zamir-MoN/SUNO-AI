@@ -1037,10 +1037,12 @@
         if (this.state === VoiceState.USER_SPEAKING && !this.isMuted) {
           this._setState(VoiceState.LISTENING);
         }
-        // Auto-recover on non-fatal error
+        // Auto-recover on non-fatal error with graceful backoff
         if (e.error === 'no-speech' || e.error === 'network') {
-          if (this.state !== VoiceState.IDLE && !this.isMuted && this.state !== VoiceState.AI_SPEAKING) {
-            try { this.fallbackSpeechRecognition.start(); } catch (err) {}
+          if (this.state !== VoiceState.IDLE && !this.isMuted && this.state !== VoiceState.AI_SPEAKING && !this.isFallbackPlaying) {
+            setTimeout(() => {
+              try { this.fallbackSpeechRecognition.start(); } catch (err) {}
+            }, 300);
           }
         }
       };
@@ -1048,22 +1050,25 @@
       this.fallbackSpeechRecognition.onend = () => {
         this._isSttRunning = false;
         if (this.state !== VoiceState.IDLE && !this.isMuted) {
-          if (this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING) {
+          if (this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING && !this.isFallbackPlaying) {
             setTimeout(() => {
-              if (this.state !== VoiceState.IDLE && !this.isMuted && this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING && !this._isSttRunning) {
+              if (this.state !== VoiceState.IDLE && !this.isMuted && this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING && !this.isFallbackPlaying && !this._isSttRunning) {
                 try {
                   this.fallbackSpeechRecognition.start();
                 } catch (e) {}
               }
-            }, 50);
+            }, 300);
           }
         }
       };
 
-      if (!this.isMuted && this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING) {
-        try {
-          this.fallbackSpeechRecognition.start();
-        } catch (e) {}
+      // Only start STT if assistant is not currently speaking TTS audio
+      if (!this.isMuted && this.state !== VoiceState.AI_SPEAKING && this.state !== VoiceState.THINKING && !this.isFallbackPlaying) {
+        setTimeout(() => {
+          try {
+            this.fallbackSpeechRecognition.start();
+          } catch (e) {}
+        }, 200);
       }
     }
 
