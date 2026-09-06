@@ -611,13 +611,12 @@
             case 'session.ready':
               this.isLiveApiMode = false;
               console.log('[VoiceAssistant] Session established. Mode: High-Speed Streaming STT/TTS');
-              this._initFallbackSpeechRecognition();
-              this._setState(VoiceState.LISTENING);
-
-              // If brand new empty chat session, speak a clean, natural intro greeting (Default: Hindi)
+              
               const currentHistory = config.history || [];
               if (!this._hasSpokenIntro && currentHistory.length === 0) {
                 this._hasSpokenIntro = true;
+                this._setState(VoiceState.AI_SPEAKING);
+                
                 let introGreeting = "नमस्ते! मैं SUNO AI हूँ। मुझे सुदीप्त ने आपके भावनात्मक सहयोग और बातचीत के लिए बनाया है। बताइए, आज मैं आपकी क्या मदद कर सकती हूँ?";
                 if (this.selectedLang === 'en-US') {
                   introGreeting = "Hello! I am SUNO AI, your compassionate companion. How can I support you today?";
@@ -626,7 +625,12 @@
                 }
                 this._lastAssistantSpokenText = introGreeting;
                 this._emitTranscript('assistant', introGreeting, true);
+                
+                // Play intro greeting FIRST. Speech recognition will ONLY initialize after intro speech concludes!
                 this._enqueueFallbackTTSChunk(introGreeting);
+              } else {
+                this._initFallbackSpeechRecognition();
+                this._setState(VoiceState.LISTENING);
               }
               break;
 
@@ -1139,12 +1143,20 @@
           clearInterval(this._ttsKeepAliveTimer);
           this._ttsKeepAliveTimer = null;
         }
-        if (this.fallbackSpeechRecognition && !this.isMuted) {
+
+        // Initialize SpeechRecognition ONLY after intro/assistant speech has completed
+        if (!this.fallbackSpeechRecognition) {
+          setTimeout(() => {
+            if (!this.isFallbackPlaying && !this.isMuted) {
+              this._initFallbackSpeechRecognition();
+            }
+          }, 600);
+        } else if (!this.isMuted) {
           setTimeout(() => {
             if (!this.isFallbackPlaying && this.state !== VoiceState.AI_SPEAKING && !this.isMuted) {
               try { this.fallbackSpeechRecognition.start(); } catch (e) {}
             }
-          }, 500);
+          }, 600);
         }
         return;
       }
