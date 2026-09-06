@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>SUNO AI v0.6.7</title>
   <link rel="icon" type="image/png" href="SUNO.png">
   <link rel="apple-touch-icon" href="SUNO.png">
@@ -15,7 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-  <link rel="stylesheet" href="style.css?v=1.0.3">
+  <link rel="stylesheet" href="style.css?v=1.0.4">
   <style>
     /* CRITICAL MOBILE RESCUE STYLES */
     @media (max-width: 768px) {
@@ -25,58 +25,85 @@
         overflow: hidden !important;
         position: fixed !important;
         inset: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
       }
       .aura-app-layout {
         padding: 0 !important;
         margin: 0 !important;
+        height: 100% !important;
         height: 100dvh !important;
-        height: 100vh !important;
         width: 100vw !important;
         gap: 0 !important;
         display: flex !important;
         flex-direction: column !important;
+        overflow: hidden !important;
       }
       .aura-main-panel {
+        height: 100% !important;
         height: 100dvh !important;
-        height: 100vh !important;
-        width: 100% !important;
+        width: 100vw !important;
         border-radius: 0 !important;
         border: none !important;
         display: flex !important;
         flex-direction: column !important;
         position: relative !important;
         overflow: hidden !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
       }
       .aura-top-header {
-        height: 56px !important;
+        height: 52px !important;
+        min-height: 52px !important;
+        max-height: 52px !important;
         flex-shrink: 0 !important;
         padding: 0 12px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        position: relative !important;
+        z-index: 20 !important;
       }
       .aura-messages-container {
         flex: 1 1 auto !important;
+        height: auto !important;
         overflow-y: auto !important;
         -webkit-overflow-scrolling: touch !important;
-        padding: 8px 12px 90px 12px !important;
+        padding: 10px 14px 10px 14px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        box-sizing: border-box !important;
+      }
+      .aura-welcome-hero {
+        margin: auto 0 !important;
+        padding: 12px 6px !important;
         display: flex !important;
         flex-direction: column !important;
         align-items: center !important;
       }
-      .aura-welcome-hero {
-        margin: auto 0 !important;
-        padding: 10px 4px !important;
-      }
       .aura-hero-emblem {
-        width: 75px !important;
-        height: 75px !important;
+        width: 70px !important;
+        height: 70px !important;
         margin-bottom: 2px !important;
+      }
+      .aura-hero-logo-wrapper {
+        width: 70px !important;
+        height: 70px !important;
+        padding: 6px !important;
       }
       .aura-hero-heading {
         font-size: 19px !important;
+        line-height: 1.25 !important;
         margin-bottom: 4px !important;
+        font-weight: 800 !important;
       }
       .aura-hero-sub {
         font-size: 12.5px !important;
+        line-height: 1.4 !important;
         margin-bottom: 12px !important;
+        max-width: 320px !important;
       }
       .aura-prompt-grid {
         grid-template-columns: 1fr !important;
@@ -85,17 +112,26 @@
       .aura-prompt-card {
         padding: 8px 12px !important;
       }
+
+      /* Mobile Chat Input Dock - Direct flex item at bottom of main-panel */
       .aura-input-wrapper {
-        position: absolute !important;
-        bottom: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
+        position: relative !important;
+        bottom: auto !important;
+        left: auto !important;
+        right: auto !important;
+        flex-shrink: 0 !important;
         width: 100% !important;
-        padding: 6px 12px calc(12px + env(safe-area-inset-bottom, 8px)) 12px !important;
-        background: linear-gradient(180deg, rgba(174, 226, 255, 0) 0%, rgba(174, 226, 255, 0.96) 25%, #AEE2FF 100%) !important;
-        z-index: 99999 !important;
+        padding: 6px 12px calc(10px + env(safe-area-inset-bottom, 8px)) 12px !important;
+        background: rgba(174, 226, 255, 0.98) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border-top: 1px solid rgba(159, 161, 255, 0.45) !important;
+        z-index: 100 !important;
         box-sizing: border-box !important;
-        pointer-events: none !important;
+        pointer-events: auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
       }
       .aura-input-capsule {
         pointer-events: auto !important;
@@ -104,15 +140,17 @@
         padding: 5px 8px 5px 14px !important;
         border-radius: 28px !important;
         border: 2px solid #9FA1FF !important;
-        box-shadow: 0 8px 24px rgba(50, 56, 128, 0.20), 0 0 16px rgba(159, 161, 255, 0.40) !important;
+        box-shadow: 0 4px 18px rgba(50, 56, 128, 0.18), 0 0 12px rgba(159, 161, 255, 0.35) !important;
         display: flex !important;
         align-items: center !important;
         gap: 6px !important;
+        box-sizing: border-box !important;
       }
       .aura-input-capsule textarea {
         font-size: 14px !important;
         min-height: 20px !important;
         max-height: 70px !important;
+        flex: 1 !important;
       }
       .aura-capsule-btn,
       .aura-capsule-voice-btn,
@@ -121,6 +159,7 @@
         height: 35px !important;
         min-width: 35px !important;
         padding: 0 !important;
+        flex-shrink: 0 !important;
       }
       .aura-legal-sub {
         display: none !important;
